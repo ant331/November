@@ -90,6 +90,23 @@
     .bulk-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
     .bulk-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 500; color: #334155; }
     .bulk-grid input { padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; }
+
+    /* Bulk add enumerators (admin only) */
+    .bar .bar-actions{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+    .bar .bar-actions button.ghost{margin-left:0}
+    @media (max-width:720px){.bar .bar-actions{margin-left:0;width:100%}}
+    .admin-tag{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:999px;font-size:11px;
+      font-weight:600;background:var(--brand-50);color:var(--brand-600);vertical-align:middle}
+    .bulk-help{margin:0 0 14px;font-size:13px;line-height:1.55;color:var(--text-2)}
+    .bulk-help a{font-weight:600;cursor:pointer}
+    .bulk-text{width:100%;min-height:150px;resize:vertical;font-family:var(--mono,ui-monospace,Menlo,monospace);
+      font-size:13px;line-height:1.5}
+    .bulk-sum{margin:14px 0 8px;font-size:13px;color:var(--text-2)}
+    .bulk-sum b{color:var(--text)}
+    .bulk-prev{max-height:260px}
+    .bulk-prev table{font-size:13px}
+    .bulk-prev th,.bulk-prev td{padding:7px 12px}
+    .bulk-prev tr.skip td{color:var(--muted)}
   </style>
 </head>
 <body>
@@ -123,7 +140,9 @@
 
       <div class="bar" style="margin-bottom:10px">
         <input id="e_q" placeholder="Search EM, name, district or telephone…">
-        <button class="ghost" id="e_add" style="margin-left:auto" type="button">+ Add enumerator</button>
+        <div class="bar-actions">
+          <button class="ghost" id="e_add" type="button">+ Add enumerator</button>
+        </div>
       </div>
 
       <div class="tw">
@@ -233,6 +252,35 @@
     </div>
   </div>
 
+  <!-- ========== BULK ADD ENUMERATORS MODAL (admin only) ========== -->
+  <div id="bmodal" class="modal" aria-hidden="true">
+    <div class="modal-card" style="width:min(780px,100%)">
+      <div class="modal-header">
+        <h3>Add enumerators in bulk <span class="admin-tag">Admin only</span></h3>
+        <button id="bmodal-close" aria-label="Close" type="button">×</button>
+      </div>
+      <div class="modal-body">
+        <p class="bulk-help">
+          Paste rows from Excel or Google Sheets, or load a CSV file. One enumerator per row, columns in this order:
+          <b>EM code, Name, District, Telephone</b> (District and Telephone are optional). A header row is skipped automatically.
+          <a href="#" id="b_template">Download template</a> · <a href="#" id="b_pick">Choose CSV file</a>
+        </p>
+        <input type="file" id="b_file" accept=".csv,.txt,text/csv,text/plain" hidden>
+        <label for="b_text">Rows</label>
+        <textarea id="b_text" class="bulk-text" wrap="off" spellcheck="false" autocomplete="off"
+          placeholder="EM051, Jane Doe, Kyenjojo, 0700000001&#10;EM052, John Smith, Rukungiri, 0700000002"></textarea>
+        <div id="b_err" class="msg bad" hidden style="margin-top:12px"></div>
+        <div id="b_sum" class="bulk-sum" aria-live="polite"></div>
+        <div class="tw bulk-prev" id="b_prev_wrap" hidden><table id="b_prev" class="etable"></table></div>
+      </div>
+      <div class="modal-footer">
+        <span class="count" id="bmodal-count"></span>
+        <button id="bmodal-cancel" class="ghost" type="button">Cancel</button>
+        <button id="bmodal-save" type="button" disabled>Add enumerators</button>
+      </div>
+    </div>
+  </div>
+
   <script src="vendor/supabase.js"></script>
   <script src="js/config.js"></script>
   <script src="js/app.js"></script>
@@ -254,6 +302,7 @@
       let assignments = new Map();    
       let selectedFile = null, busy = false;
       let modalEid = null, modalSel = new Set(), modalShowAll = false;
+      let allEm = new Map();          // every EM code in the table, active or not (value = is active)
 
       // CRITICAL FIX: Generates a unique ID for the map. 
       // If the database 'id' column was deleted, it safely falls back to the EM code.
@@ -290,6 +339,7 @@
         ]);
         if (lRows.error) throw lRows.error;
         enumerators = eRows.filter(e => e.active !== false);
+        allEm = new Map(eRows.map(e => [String(e.em || "").toUpperCase(), e.active !== false]));
         
         // Use the robust getEid() function instead of just e.id
         E = new Map(enumerators.map(e => [getEid(e), e]));
@@ -428,6 +478,7 @@
         if (ev.key === "Escape" && anyModalOpen()) {
           if ($("#amodal").classList.contains("open")) closeModal("amodal");
           if ($("#emodal").classList.contains("open")) closeModal("emodal");
+          if ($("#bmodal").classList.contains("open")) closeBulk();
         }
       });
 
@@ -494,12 +545,12 @@
           </div>`;
         } else if (modalShowAll){
           banner.innerHTML = `<div class="picker-badge ok">
-            <span>📍 Showing <b>all districts</b> (${pool.length}).</span>
+            <span> Showing <b>all districts</b> (${pool.length}).</span>
             <a id="amodal-filter-district">Filter to ${esc(district)}</a>
           </div>`;
         } else {
           banner.innerHTML = `<div class="picker-badge ok">
-            <span>📍 Showing assets in <b>${esc(district)}</b> only (${inDistrict} found).</span>
+            <span> Showing assets in <b>${esc(district)}</b> only (${inDistrict} found).</span>
             <a id="amodal-show-all">Show all districts</a>
           </div>`;
         }
@@ -606,11 +657,179 @@
         }
 
         enumerators.push(data);
+        allEm.set(String(data.em).toUpperCase(), true);
         enumerators.sort((a,b) => String(a.em).localeCompare(String(b.em)));
         E.set(getEid(data), data);
         closeModal("emodal");
         renderEnumerators();
       };
+
+      /* --- BULK ADD ENUMERATORS (admin only) --- */
+      const isAdmin = me.role === "admin";
+      const BULK_MAX = 500;
+      let bulkRows = [], bulkBusy = false, bulkTooMany = false;
+
+      // Minimal delimited-text parser: tab (Excel/Sheets paste), semicolon or comma, with "quoted" cells.
+      function parseBulkText(text){
+        text = String(text || "").replace(/^\uFEFF/, "");
+        const first = text.split(/\r?\n/).find(l => l.trim()) || "";
+        const delim = first.includes("\t") ? "\t" : (first.includes(";") && !first.includes(",") ? ";" : ",");
+        const rows = [];
+        let row = [], cur = "", inQ = false;
+        for (let i = 0; i < text.length; i++){
+          const c = text[i];
+          if (inQ){
+            if (c === '"'){ if (text[i+1] === '"'){ cur += '"'; i++; } else inQ = false; }
+            else cur += c;
+          } else if (c === '"' && cur.trim() === ""){ inQ = true; cur = ""; }
+          else if (c === delim){ row.push(cur); cur = ""; }
+          else if (c === "\n" || c === "\r"){
+            if (c === "\r" && text[i+1] === "\n") i++;
+            row.push(cur); cur = ""; rows.push(row); row = [];
+          } else cur += c;
+        }
+        row.push(cur); rows.push(row);
+        return rows.filter(r => r.some(x => x.trim()));
+      }
+
+      function buildBulkRows(text){
+        let table = parseBulkText(text);
+        if (table.length){                                   // drop a header row if there is one
+          const h = table[0].map(x => x.trim());
+          if (/^(em|em[\s_-]*(code|no|number)|code)$/i.test(h[0] || "") || /^(full[\s_-]*)?name$/i.test(h[1] || "")) table = table.slice(1);
+        }
+        bulkTooMany = table.length > BULK_MAX;
+        const seen = new Map();                              // EM -> row number of its first valid occurrence
+        return table.slice(0, BULK_MAX).map((r, i) => {
+          const em = (r[0] || "").trim().toUpperCase();
+          const name = (r[1] || "").trim().replace(/\s+/g, " ");
+          const district = (r[2] || "").trim() || null;
+          const telephone = (r[3] || "").trim() || null;
+          let err = "";
+          if (!em) err = "Missing EM code";
+          else if (!name) err = "Missing name";
+          else if (em.length > 20) err = "EM code over 20 characters";
+          else if (name.length > 120) err = "Name over 120 characters";
+          else if ((district || "").length > 120) err = "District over 120 characters";
+          else if ((telephone || "").length > 40) err = "Telephone over 40 characters";
+          else if (seen.has(em)) err = "Repeats row " + seen.get(em);
+          else if (allEm.has(em)) err = allEm.get(em) ? "Already exists" : "Already exists (inactive)";
+          if (!err) seen.set(em, i + 1);
+          return { n: i + 1, em, name, district, telephone, err };
+        });
+      }
+
+      function syncBulkButton(){
+        const n = bulkRows.filter(r => !r.err).length;
+        const b = $("#bmodal-save");
+        b.disabled = bulkBusy || !n || bulkTooMany;
+        b.textContent = bulkBusy ? "Adding…" : (n ? `Add ${n} enumerator${n === 1 ? "" : "s"}` : "Add enumerators");
+        $("#bmodal-count").textContent = bulkRows.length ? `${bulkRows.length} row${bulkRows.length === 1 ? "" : "s"} read` : "";
+      }
+
+      function refreshBulk(){
+        const text = $("#b_text").value, wrap = $("#b_prev_wrap");
+        say($("#b_err"), "");
+        if (!text.trim()){
+          bulkRows = []; bulkTooMany = false;
+          wrap.hidden = true; $("#b_sum").textContent = "";
+          return syncBulkButton();
+        }
+        bulkRows = buildBulkRows(text);
+        const ok = bulkRows.filter(r => !r.err).length, skip = bulkRows.length - ok;
+        $("#b_sum").innerHTML = bulkRows.length
+          ? `<b>${ok}</b> ready to add` + (skip ? ` · <b>${skip}</b> will be skipped` : "")
+          : "No rows found yet.";
+        if (bulkTooMany) say($("#b_err"), `Too many rows. Add up to ${BULK_MAX} at a time.`);
+        wrap.hidden = !bulkRows.length;
+        $("#b_prev").innerHTML =
+          "<thead><tr><th>#</th><th>EM</th><th>Name</th><th>District</th><th>Telephone</th><th>Status</th></tr></thead><tbody>" +
+          bulkRows.map(r => `<tr class="${r.err ? "skip" : ""}">
+            <td>${r.n}</td>
+            <td><span class="em">${esc(r.em || "—")}</span></td>
+            <td>${esc(r.name || "—")}</td>
+            <td>${esc(r.district || "—")}</td>
+            <td>${esc(r.telephone || "—")}</td>
+            <td>${r.err ? `<span class="b no">${esc(r.err)}</span>` : '<span class="b ok">Ready</span>'}</td>
+          </tr>`).join("") + "</tbody>";
+        syncBulkButton();
+      }
+
+      function openBulk(){
+        if (!isAdmin) return;
+        $("#b_text").value = "";
+        refreshBulk();
+        openModal("bmodal");
+        $("#b_text").focus();
+      }
+      function closeBulk(){
+        if ($("#b_text").value.trim() && !bulkBusy && !confirm("Discard the pasted rows?")) return;
+        closeModal("bmodal");
+      }
+
+      async function saveBulk(){
+        if (!isAdmin || bulkBusy) return;
+        const ok = bulkRows.filter(r => !r.err);
+        if (!ok.length || bulkTooMany) return;
+        const skipped = bulkRows.length - ok.length;
+
+        bulkBusy = true; syncBulkButton(); say($("#b_err"), "");
+        const payload = ok.map(r => ({ em: r.em, name: r.name, district: r.district, telephone: r.telephone, active: true }));
+        const { data, error } = await sb.from("enumerators").insert(payload).select();   // one request: all rows or none
+        bulkBusy = false;
+
+        if (error){
+          const m = String(error.message || error);
+          say($("#b_err"),
+            /row-level security/i.test(m) ? "Your account is not allowed to add enumerators." :
+            /duplicate|unique/i.test(m)   ? "Some EM codes were added by someone else in the meantime. Reload the page and paste the list again." :
+            "Could not add enumerators: " + m);
+          return syncBulkButton();
+        }
+
+        for (const d of (data || [])){
+          enumerators.push(d);
+          E.set(getEid(d), d);
+          allEm.set(String(d.em).toUpperCase(), true);
+        }
+        enumerators.sort((a, b) => String(a.em).localeCompare(String(b.em)));
+        $("#b_text").value = ""; refreshBulk();
+        closeModal("bmodal");
+        renderEnumerators();
+
+        const n = (data && data.length) || ok.length;
+        say($msg, `Added ${n} enumerator${n === 1 ? "" : "s"}.` + (skipped ? ` ${skipped} row${skipped === 1 ? " was" : "s were"} skipped.` : "") +
+                  (data && data.length ? "" : " Reload the page to see them."), true);
+        $msg.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+
+      if (isAdmin){
+        // The entry point only exists for admins. (UX guard only: row-level security is the real protection.)
+        $("#e_add").insertAdjacentHTML("beforebegin",
+          '<button class="ghost" id="e_bulk" type="button">Bulk add <span class="admin-tag">Admin</span></button>');
+        $("#e_bulk").onclick = openBulk;
+        $("#bmodal-close").onclick  = closeBulk;
+        $("#bmodal-cancel").onclick = closeBulk;
+        $("#bmodal").addEventListener("mousedown", ev => { if (ev.target.id === "bmodal") closeBulk(); });
+        $("#b_text").oninput = refreshBulk;
+        $("#bmodal-save").onclick = saveBulk;
+
+        $("#b_template").onclick = ev => {
+          ev.preventDefault();
+          csv([["em","EM code"],["name","Name"],["district","District"],["telephone","Telephone"]],
+              [{ em:"EM051", name:"Jane Doe", district:"Kyenjojo", telephone:"0700000000" }],
+              "enumerators_template.csv");
+        };
+        $("#b_pick").onclick = ev => { ev.preventDefault(); $("#b_file").click(); };
+        $("#b_file").onchange = async () => {
+          const f = $("#b_file").files[0];
+          $("#b_file").value = "";
+          if (!f) return;
+          if (f.size > 2 * 1024 * 1024) return say($("#b_err"), "That file is too large. Use a CSV with up to " + BULK_MAX + " rows.");
+          $("#b_text").value = await f.text();
+          refreshBulk();
+        };
+      }
 
       /* --- FILE UPLOAD --- */
       const drop = $("#drop"), fileInput = $("#file");
