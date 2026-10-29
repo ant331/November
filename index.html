@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="css/style.css">
+  <title>Sign in · RTV Inventory Tracker</title>
+</head>
+<body class="center">
+  <div class="card login">
+    <img src="img/logo.png" alt="Raising The Village">
+    <h1>Inventory Transfer Tracker</h1>
+    <p class="sub">Sign in with your work email. We'll email you a one-time code.</p>
+
+    <div id="msg" class="msg" hidden></div>
+
+    <label>Work email
+      <input id="email" type="email" autocomplete="email"
+             placeholder="name@raisingthevillage.org" required>
+    </label>
+
+    <div id="s2" hidden>
+      <label>Emailed code
+        <input id="otp" inputmode="numeric" autocomplete="one-time-code"
+               maxlength="12" placeholder="Code from the newest email" required>
+      </label>
+    </div>
+
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
+      <button id="go" style="flex:1">Send code</button>
+      <button id="re" class="ghost" hidden>Resend</button>
+    </div>
+
+    <p class="sub" style="margin:24px 0 0;font-size:12px;text-align:center">
+      Trouble signing in? Ask an admin to add your email.
+    </p>
+  </div>
+
+  <script src="vendor/supabase.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    (async()=>{
+      const m=$("#msg"),email=()=>$("#email").value.trim().toLowerCase();let sent=false;
+      if(new URLSearchParams(location.search).has("denied"))
+        say(m,"This account is not authorised to use the tracker. Ask an admin to add it.");
+      else if((await sb.auth.getSession()).data.session){location.replace("dashboard.html");return}
+
+      async function send(){
+        if(!/^\S+@\S+\.\S+$/.test(email()))return say(m,"Enter a valid work email.");
+        $("#go").disabled=true;
+        const{error}=await sb.auth.signInWithOtp({email:email(),options:{shouldCreateUser:false}});
+        $("#go").disabled=false;
+        if(error)return say(m,/signup/i.test(error.message)
+          ?"That email is not a registered user. Ask an admin to create it first."
+          :"Could not send code: "+error.message);
+        sent=true;
+        $("#s2").hidden=false;
+        $("#re").hidden=false;
+        $("#go").textContent="Verify & sign in";
+        $("#otp").focus();
+        say(m,"Code sent to "+email()+". Use only the newest code.",true);
+      }
+      async function verify(){
+        const token=$("#otp").value.replace(/\D/g,"");
+        if(!/^\d{6,10}$/.test(token))return say(m,"Enter the code from your email.");
+        $("#go").disabled=true;
+        const{error}=await sb.auth.verifyOtp({email:email(),token,type:"email"});
+        $("#go").disabled=false;
+        if(error)return say(m,"Code rejected: "+error.message+" Send a new code and use only the newest one.");
+        location.replace("dashboard.html");
+      }
+
+      $("#go").onclick=()=>sent?verify():send();
+      $("#re").onclick=send;
+      $("#email").onkeydown=$("#otp").onkeydown=e=>{if(e.key==="Enter")$("#go").click()};
+    })();
+  </script>
+</body>
+</html>

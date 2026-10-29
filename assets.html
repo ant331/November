@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="css/style.css">
+  <title>Assets · RTV Inventory Tracker</title>
+</head>
+<body>
+  <header id="nav"></header>
+  <main>
+    <h1>Assets</h1>
+    <p class="sub">Current status, location and holder of every asset. Click an Asset ID to see its movement history.</p>
+    <div id="msg" class="msg" hidden></div>
+
+    <div class="bar">
+      <input id="q" placeholder="Search asset, location or holder…">
+      <select id="f_status"></select>
+      <select id="f_current_location"></select>
+      <button class="ghost" id="csv">⤓ Export CSV</button>
+    </div>
+
+    <div class="tw"><table id="tbl"></table></div>
+    <div class="pg" id="pg"></div>
+  </main>
+
+  <script src="vendor/supabase.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    (async()=>{
+      await guard("assets");
+      try{
+        const rows=await all("assets",[["asset_id",true]]);
+        view({rows,file:"assets.csv",
+          sel:[["status","Status"],["current_location","Location"]],
+          cols:[
+            ["asset_id","Asset ID",v=>`<a href="movements.html?q=${encodeURIComponent(v)}">${esc(v)}</a>`],
+            ["asset_type","Type"],
+            ["status","Status",v=>`<span class="b s-${esc(String(v).replace(/\s/g,""))}">${esc(v)}</span>`],
+            ["current_location","Current location"],
+            ["current_holder","Current holder"]
+          ]});
+      }catch(e){say($("#msg"),"Could not load data: "+(e.message||e))}
+    })();
+  </script>
+</body>
+</html>

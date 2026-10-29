@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="css/style.css">
+  <title>Movement Log · RTV Inventory Tracker</title>
+</head>
+<body>
+  <header id="nav"></header>
+  <main>
+    <h1>Movement Log</h1>
+    <p class="sub">Append-only, hash-chained record of every movement. Newest first.</p>
+    <div id="msg" class="msg" hidden></div>
+
+    <div class="bar">
+      <input id="q" placeholder="Search any column…">
+      <select id="f_movement_type"></select>
+      <select id="f_to_location"></select>
+      <select id="f_activity"></select>
+      <button class="ghost" id="csv">⤓ Export CSV</button>
+    </div>
+
+    <div class="tw"><table id="tbl"></table></div>
+    <div class="pg" id="pg"></div>
+  </main>
+
+  <script src="vendor/supabase.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    (async()=>{
+      await guard("movements");
+      
+      try {
+        // Fetch all movements, newest first
+        const rows = await all("movements", [["moved_at", false], ["id", false]]);
+        
+        // Handle pre-filtering from URL (e.g., movements.html?q=AST-123)
+        const pre = new URLSearchParams(location.search).get("q");
+        if (pre) $("#q").value = pre;
+
+        // --- DYNAMIC COLUMN GENERATOR ---
+        // If rows exist, grab keys from the first row. Otherwise, use a comprehensive fallback.
+        let keys = rows.length > 0 ? Object.keys(rows[0]) : [
+          "id", "moved_at", "asset_id", "movement_type", "from_location", "to_location", 
+          "from_holder", "to_holder", "activity", "reason", "recorded_by", "batch_id", "row_hash"
+        ];
+
+        // Define specific formatters and labels for known columns
+        const columnDefs = {
+          id: ["id", "ID", v => `<span class="mono" style="color:#94a3b8;font-size:11px;">${esc(v)}</span>`],
+          moved_at: ["moved_at", "Moved at (UTC)", v => esc(v ? String(v).slice(0,19).replace("T"," ") : "")],
+          created_at: ["created_at", "Created at (UTC)", v => esc(v ? String(v).slice(0,19).replace("T"," ") : "")],
+          asset_id: ["asset_id", "Asset ID", v => v ? `<a href="movements.html?q=${encodeURIComponent(v)}">${esc(v)}</a>` : ""],
+          movement_type: ["movement_type", "Type", v => v ? `<span class="b t-${esc(String(v).replace(/\s/g,""))}">${esc(v)}</span>` : ""],
+          from_location: ["from_location", "From", v => esc(v || "—")],
+          to_location: ["to_location", "To", v => esc(v || "—")],
+          from_holder: ["from_holder", "From holder", v => esc(v || "—")],
+          to_holder: ["to_holder", "To holder", v => esc(v || "—")],
+          activity: ["activity", "Activity", v => esc(v || "—")],
+          reason: ["reason", "Reason", v => esc(v || "—")],
+          recorded_by: ["recorded_by", "Recorded by", v => esc(v || "—")],
+          batch_id: ["batch_id", "Batch", v => v ? `<span class="mono" title="${esc(v)}">${esc(String(v).slice(0,8))}…</span>` : ""],
+          row_hash: ["row_hash", "Row hash", v => v ? `<span class="mono" title="${esc(v)}">${esc(String(v).slice(0,8))}…</span>` : ""],
+          previous_hash: ["previous_hash", "Prev Hash", v => v ? `<span class="mono" title="${esc(v)}">${esc(String(v).slice(0,8))}…</span>` : ""],
+          item_type: ["item_type", "Item Type", v => esc(v || "—")],
+          quantity: ["quantity", "Qty", v => esc(v || "—")]
+        };
+
+        // Map all keys found in the data to column configurations
+        const cols = keys.map(k => {
+          // If we have a specific formatter for this column, use it
+          if (columnDefs[k]) return columnDefs[k];
+          
+          // Otherwise, generate a clean label from the key (e.g., "new_column_name" -> "New Column Name")
+          const label = k.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+          
+          // Default formatter: handle JSON objects gracefully, otherwise escape as text
+          const formatter = v => {
+            if (v === null || v === undefined) return "";
+            if (typeof v === 'object') return `<span class="mono" style="font-size:11px;">${esc(JSON.stringify(v))}</span>`;
+            return esc(String(v));
+          };
+          
+          return [k, label, formatter];
+        });
+
+        // Define the specific filters we want in the top bar
+        const sel = [
+          ["movement_type", "Type"],
+          ["to_location", "To"],
+          ["activity", "Activity"]
+        ];
+
+        // Render the table using the app.js view function
+        view({
+          rows, 
+          file: "movement-log.csv",
+          sel,
+          cols
+        });
+
+      } catch(e) {
+        say($("#msg"), "Could not load data: " + (e.message || e));
+      }
+    })();
+  </script>
+</body>
+</html>

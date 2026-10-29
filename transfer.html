@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="css/style.css">
+  <title>Transfer Form · RTV Inventory Tracker</title>
+  <style>
+    .bulk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+    .bulk-grid label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:#334155}
+    .bulk-grid input{width:100%}
+    .bulk-note{font-size:12px;color:#64748b;margin:4px 0 12px}
+    .bulk-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+    .bulk-from{display:flex;flex-direction:column;gap:4px;font-size:13px;color:#334155;max-width:320px;margin-bottom:12px}
+    .stock{font-size:11px;color:#64748b;min-height:14px}
+    .stock.low{color:#b91c1c;font-weight:600}
+    .stock-status{font-size:12px;color:#64748b;margin:8px 0 0}
+  </style>
+</head>
+<body>
+  <header id="nav"></header>
+  <main>
+    <h1>Record inventory transfer</h1>
+    <p class="sub">Every movement is sent for approval to the destination district verifier. Once approved, it is recorded to Supabase and the asset records are updated automatically.</p>
+    <div id="msg" class="msg" hidden></div>
+
+    <section class="card">
+      <h2>Step 1 · Identify yourself</h2>
+      <p style="margin:0">
+        Recorded by <b id="who">…</b>. Your verified sign-in email will be attached to this request.
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>Step 2 · Transfer details <small>(apply to every tablet below)</small></h2>
+      <div class="grid">
+        <label>Movement type<select id="type"></select></label>
+        <label>Destination location<select id="dest"></select>
+          <small>For LOST the destination defaults to LOST.</small>
+        </label>
+        <label>New holder / user<input id="holder" maxlength="120" autocomplete="off"></label>
+        <label>Activity<select id="act"></select></label>
+        <label class="wide">Reason / reference<input id="reason" maxlength="300" autocomplete="off"></label>
+        <label>Confirm<input id="yes" autocomplete="off" placeholder="Type YES to allow submission"></label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Step 3 · Serialized assets <small id="cnt"></small></h2>
+      <div class="add">
+        <input id="aid" list="ids" autocomplete="off"
+               placeholder="Asset ID — paste several separated by spaces or commas">
+        <datalist id="ids"></datalist>
+        <button id="add">+ Add</button>
+      </div>
+      <div class="tw"><table id="tbl"></table></div>
+    </section>
+
+    <section class="card">
+      <h2>Step 3b · Non-serialized items <small>(bags, chargers, tags, extensions)</small></h2>
+      <p class="bulk-note">Enter the quantity for each item type being moved in this batch. Leave blank or 0 to skip. Uses the same transfer details (type, destination, holder, activity, reason) from Step 2. You can only move out what the <b>From location</b> currently holds.</p>
+      <label class="bulk-from" id="fromWrap">From location <small>(where the items are leaving from)</small>
+        <select id="from"></select>
+      </label>
+      <div class="bulk-grid">
+        <label>Bags<input id="b_bag" type="number" min="0" step="1" placeholder="0"><span class="stock" data-item="BAG"></span></label>
+        <label>Chargers<input id="b_charger" type="number" min="0" step="1" placeholder="0"><span class="stock" data-item="CHARGER"></span></label>
+        <label>Tags<input id="b_tag" type="number" min="0" step="1" placeholder="0"><span class="stock" data-item="TAG"></span></label>
+        <label>Extensions<input id="b_ext" type="number" min="0" step="1" placeholder="0"><span class="stock" data-item="EXTENSION"></span></label>
+      </div>
+      <p class="stock-status" id="stockStatus"></p>
+      <div class="bulk-actions">
+        <button id="submitBulk" class="ghost">Submit non-serialized only for approval</button>
+      </div>
+    </section>
+
+    <section class="card" id="stockCard" hidden>
+      <h2>Admin · Add new stock <small>(bags, chargers, tags, extensions)</small></h2>
+      <p class="bulk-note">New items can only enter the system here. Everyone else can only move what a location already holds.</p>
+      <div class="grid">
+        <label>Location receiving the stock<select id="s_loc"></select></label>
+        <label class="wide">Reason / reference<input id="s_reason" maxlength="300" autocomplete="off" placeholder="e.g. delivery note number"></label>
+      </div>
+      <div class="bulk-grid" style="margin-top:12px">
+        <label>Bags<input id="s_bag" type="number" min="0" step="1" placeholder="0"></label>
+        <label>Chargers<input id="s_charger" type="number" min="0" step="1" placeholder="0"></label>
+        <label>Tags<input id="s_tag" type="number" min="0" step="1" placeholder="0"></label>
+        <label>Extensions<input id="s_ext" type="number" min="0" step="1" placeholder="0"></label>
+      </div>
+      <div class="bulk-actions">
+        <button id="addStock" class="ghost">Add stock</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Step 4 · Review & submit</h2>
+      <div id="res" class="msg">Nothing submitted yet.</div>
+      <button id="submit">Submit for approval</button>
+    </section>
+  </main>
+
+  <script src="vendor/supabase.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/notif.js"></script>
+  <script>
+    (async()=>{
+      // Ensure logo is rendered in the nav
+      function ensureLogo(){
+        const nav=document.getElementById("nav"); if(!nav) return;
+        if(nav.querySelector("img.logo, a.brand img")) return;
+        let brand=nav.querySelector("a.brand,.brand");
+        if(!brand){
+          brand=document.createElement("a");
+          brand.className="brand"; brand.href="dashboard.html";
+          brand.style.cssText="display:flex;align-items:center;gap:10px;text-decoration:none;";
+          nav.prepend(brand);
+        }
+        if(!brand.querySelector("img")){
+          const img=document.createElement("img");
+          img.src="img/logo.png"; img.alt="Raising The Village"; img.className="logo";
+          img.style.cssText="height:34px;width:auto;display:block;";
+          brand.prepend(img);
+        }
+      }
+      ensureLogo();
+      const navEl=document.getElementById("nav");
+      if(navEl) new MutationObserver(ensureLogo).observe(navEl,{childList:true,subtree:true});
+
+      const me=await guard("transfer"),val=i=>$(i).value.trim(),res=$("#res"),MAX=50;
+      $("#who").textContent=me.email+" ("+me.role+")";
+
+      let A=new Map(),ids=[],busy=false,myLocs=[];
+      const opts=(a,blank)=>(blank?'<option value="">— select —</option>':"")+a.map(v=>`<option>${esc(v)}</option>`).join("");
+      const out=(t,ok)=>{res.className="msg "+(ok?"ok":"bad");res.textContent=t};
+
+      async function loadAssets(){
+        A=new Map((await all("assets",[["asset_id",true]])).map(a=>[a.asset_id.toUpperCase(),a]));
+        $("#ids").innerHTML=[...A.values()].map(a=>`<option value="${esc(a.asset_id)}">`).join("");
+      }
+
+      try{
+        const lo=await sb.from("locations").select("name").order("name");if(lo.error)throw lo.error;
+        $("#type").innerHTML=opts(RTV.types);
+        $("#dest").innerHTML=opts(lo.data.map(r=>r.name),true);
+        $("#act").innerHTML='<option value=""></option>'+opts(RTV.acts);
+
+        // "From" locations for non-serialized items: only places this user can see
+        // (their assigned districts; everything for admins).
+        const ml=await sb.rpc("my_locations");if(ml.error)throw ml.error;
+        myLocs=(ml.data||[]).filter(n=>n!=="LOST");
+        $("#from").innerHTML=opts(myLocs,true);
+        if(myLocs.length===1)$("#from").value=myLocs[0];
+
+        // Only admins can add brand-new stock
+        if(me.role==="admin"){
+          $("#stockCard").hidden=false;
+          $("#s_loc").innerHTML=opts(lo.data.map(r=>r.name).filter(n=>n!=="LOST"),true);
+        }
+        await loadAssets();
+      }catch(e){say($("#msg"),"Could not load data: "+(e.message||e));return}
+
+      function check(id){
+        const a=A.get(id);if(!a)return"Unknown asset";
+        const t=val("#type"),d=val("#dest"),h=val("#holder");
+        if(t!=="LOST"&&!d)return"Pick destination";
+        if(t==="TRANSFER"&&a.current_location===d&&(!h||h===(a.current_holder||"")))return"Already at destination";
+        return"Ready";
+      }
+
+      function render(){
+        const rows=ids.map((id,i)=>{
+          const a=A.get(id),c=check(id);
+          return`<tr>
+            <td>${i+1}</td>
+            <td><b>${esc(a?a.asset_id:id)}</b></td>
+            <td>${esc(a?a.current_location:"?")}</td>
+            <td>${esc(a?a.current_holder||"":"?")}</td>
+            <td><span class="b ${c==="Ready"?"ok":"no"}">${esc(c)}</span></td>
+            <td><button class="x" data-i="${i}" title="Remove">×</button></td>
+          </tr>`;
+        }).join("");
+        $("#tbl").innerHTML=
+          "<thead><tr><th>#</th><th>Asset ID</th><th>Current location</th><th>Current holder</th><th>Check</th><th></th></tr></thead>"+
+          "<tbody>"+(rows||'<tr><td colspan="6" class="empty">No assets added yet — paste Asset IDs above</td></tr>')+"</tbody>";
+        $("#cnt").textContent=`(${ids.length} of ${MAX})`;
+        document.querySelectorAll("button.x").forEach(b=>b.onclick=()=>{ids.splice(+b.dataset.i,1);render()});
+      }
+
+      function add(){
+        let dup=0;
+        for(const p of $("#aid").value.toUpperCase().split(/[\s,;]+/).filter(Boolean)){
+          if(ids.includes(p)){dup++;continue}
+          if(ids.length>=MAX){out("Maximum "+MAX+" assets per submission.");break}
+          ids.push(p);
+        }
+        $("#aid").value="";
+        if(dup)out(dup+" duplicate ID(s) ignored.");
+        render();
+      }
+
+      $("#add").onclick=add;
+      $("#aid").onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();add()}};
+      ["#type","#dest","#holder"].forEach(s=>{$(s).oninput=render;$(s).onchange=render});
+
+      function readDetails(){
+        if(!["admin","operator"].includes(me.role))
+          throw new Error("Your role ("+me.role+") cannot record movements.");
+        const t=val("#type");
+        if(!t)throw new Error("Select a movement type");
+        if(t!=="LOST"&&!val("#dest"))throw new Error("Select a destination");
+        if(val("#yes").toUpperCase()!=="YES")throw new Error("Type YES in Confirm");
+        return {
+          type:t,
+          dest:val("#dest")||null,
+          holder:val("#holder")||null,
+          activity:val("#act")||null,
+          reason:val("#reason")||null
+        };
+      }
+
+      const bulkEls={BAG:"#b_bag",CHARGER:"#b_charger",TAG:"#b_tag",EXTENSION:"#b_ext"};
+      function readBulk(){
+        const out=[];
+        for(const[type,sel]of Object.entries(bulkEls)){
+          const raw=$(sel).value.trim(); if(!raw)continue;
+          const n=parseInt(raw,10);
+          if(!Number.isFinite(n)||n<0)throw new Error("Invalid quantity for "+type+".");
+          if(n===0)continue;
+          out.push({item_type:type,quantity:n});
+        }
+        return out;
+      }
+      function clearBulk(){Object.values(bulkEls).forEach(s=>$(s).value="")}
+
+      // ---- Stock limits for non-serialized items ----
+      // Items can only leave a location that holds them (TRANSFER, ISSUE, LOST, REPAIR).
+      // RETURN and FOUND add items back, so they need no From location.
+      const OUT=["TRANSFER","ISSUE","LOST","REPAIR"];
+      let stock={},stockOk=false,stockTok=0;
+      const needsFrom=()=>OUT.includes(val("#type"));
+
+      function paintStock(){
+        const from=val("#from"),on=needsFrom();
+        $("#fromWrap").style.display=on?"":"none";
+        for(const [type,sel] of Object.entries(bulkEls)){
+          const el=document.querySelector('.stock[data-item="'+type+'"]'),inp=$(sel);
+          if(!on||!from||!stockOk){el.textContent="";el.classList.remove("low");inp.removeAttribute("max");continue}
+          const s=stock[type]||{on_hand:0,reserved:0,available:0};
+          const q=parseInt(inp.value,10)||0;
+          el.textContent="Available at "+from+": "+s.available+
+            (s.reserved?" ("+s.on_hand+" on hand, "+s.reserved+" reserved)":"");
+          el.classList.toggle("low",q>s.available);
+          inp.max=s.available;
+        }
+      }
+
+      async function loadStock(){
+        const tok=++stockTok,from=val("#from");
+        stock={};stockOk=false;$("#stockStatus").textContent="";
+        if(!needsFrom()||!from){paintStock();return}
+        const {data,error}=await sb.rpc("bulk_availability",{p_location:from});
+        if(tok!==stockTok)return; // a newer request replaced this one
+        if(error){
+          $("#stockStatus").textContent="Could not load stock for "+from+": "+error.message;
+          paintStock();return;
+        }
+        (data||[]).forEach(s=>{stock[s.item_type]=s});
+        stockOk=true;paintStock();
+      }
+
+      // Returns the From location to send (or null when none is needed)
+      function checkBulk(details,bulk){
+        if(!bulk.length||!OUT.includes(details.type))return null;
+        const from=val("#from");
+        if(!from)throw new Error("Choose the From location for the non-serialized items.");
+        if(details.type==="TRANSFER"&&details.dest&&from===details.dest)
+          throw new Error("From and destination are the same location.");
+        if(stockOk)for(const b of bulk){
+          const s=stock[b.item_type]||{available:0};
+          if(b.quantity>s.available)
+            throw new Error("Not enough "+b.item_type+" at "+from+": "+s.available+" available, "+b.quantity+" requested.");
+        }
+        return from;
+      }
+
+      $("#from").onchange=loadStock;
+      $("#type").addEventListener("change",loadStock);
+      Object.values(bulkEls).forEach(s=>$(s).addEventListener("input",paintStock));
+
+      // Unified submission function for pending approval
+      async function submitForApproval(details, bulk, fromLoc){
+        const {data,error}=await sb.rpc("submit_pending_transfer",{
+          p_asset_ids:   ids.length ? ids.map(i=>A.get(i).asset_id) : [],
+          p_bulk_items:  bulk,
+          p_type:        details.type,
+          p_to_location: details.dest,
+          p_to_holder:   details.holder,
+          p_activity:    details.activity,
+          p_reason:      details.reason,
+          p_from_location: fromLoc||null
+        });
+        if(error) throw new Error(error.message);
+        return data;
+      }
+
+      // The RPC records some movements straight away (e.g. destination inside your own districts)
+      const doneMsg=d=>d.status==="APPROVED"
+        ? (d.decision_note||"Recorded.")
+        : "Submitted for approval to the destination verifier. Pending ID "+d.id.slice(0,8)+".";
+
+      // Bulk-only submission
+      $("#submitBulk").onclick=async()=>{
+        if(busy)return;
+        try{
+          const details=readDetails();
+          const bulk=readBulk();
+          if(!bulk.length)throw new Error("Enter a quantity for at least one non-serialized item.");
+          const fromLoc=checkBulk(details,bulk);
+          
+          busy=true;$("#submitBulk").disabled=true;
+          out("Submitting for approval…",true);
+          
+          const data=await submitForApproval(details,bulk,fromLoc);
+          
+          clearBulk();$("#yes").value="";
+          out(doneMsg(data),true);
+          if(window.RTVBell) window.RTVBell.updateBadge();
+          loadStock();
+        }catch(e){
+          out("Submit failed: "+(e.message||e));
+          loadStock();
+        }finally{
+          busy=false;$("#submitBulk").disabled=false;
+        }
+      };
+
+      // Full submission (Serialized + Non-serialized)
+      $("#submit").onclick=async()=>{
+        if(busy)return;
+        try{
+          const details=readDetails();
+          const bulk=readBulk();
+          if(!ids.length&&!bulk.length)
+            throw new Error("Add at least one Asset ID or non-serialized quantity.");
+          
+          if(ids.length){
+            for(const id of ids){const c=check(id);if(c!=="Ready")throw new Error(id+" is not ready: "+c)}
+          }
+          const fromLoc=checkBulk(details,bulk);
+          
+          busy=true;$("#submit").disabled=true;
+          out("Submitting for approval…",true);
+          
+          const data=await submitForApproval(details,bulk,fromLoc);
+          
+          // Clear form upon success
+          ids=[]; clearBulk(); $("#yes").value="";
+          render();
+          
+          out(doneMsg(data),true);
+          if(window.RTVBell) window.RTVBell.updateBadge();
+          loadStock();
+        }catch(e){
+          $("#yes").value="";
+          out("Submit failed: "+(e.message||e));
+          loadStock();
+        }finally{
+          busy=false;$("#submit").disabled=false;
+        }
+      };
+
+      // Admin only: add brand-new stock (the only way items enter the system)
+      const stockEls={BAG:"#s_bag",CHARGER:"#s_charger",TAG:"#s_tag",EXTENSION:"#s_ext"};
+      $("#addStock").onclick=async()=>{
+        if(busy)return;
+        try{
+          if(me.role!=="admin")throw new Error("Only admins can add new stock.");
+          const loc=val("#s_loc");
+          if(!loc)throw new Error("Choose the location receiving the stock.");
+          const items=[];
+          for(const [type,sel] of Object.entries(stockEls)){
+            const raw=$(sel).value.trim(); if(!raw)continue;
+            const n=parseInt(raw,10);
+            if(!Number.isFinite(n)||n<0)throw new Error("Invalid quantity for "+type+".");
+            if(n>0)items.push({item_type:type,quantity:n});
+          }
+          if(!items.length)throw new Error("Enter a quantity for at least one item.");
+
+          busy=true;$("#addStock").disabled=true;
+          out("Adding stock…",true);
+          const {error}=await sb.rpc("add_bulk_stock",{p_location:loc,p_items:items,p_reason:val("#s_reason")||null});
+          if(error)throw new Error(error.message);
+
+          Object.values(stockEls).forEach(s=>$(s).value="");$("#s_reason").value="";
+          out("Stock added at "+loc+": "+items.map(i=>i.quantity+" "+i.item_type.toLowerCase()).join(", ")+".",true);
+          loadStock();
+        }catch(e){
+          out("Add stock failed: "+(e.message||e));
+        }finally{
+          busy=false;$("#addStock").disabled=false;
+        }
+      };
+
+      render();
+      loadStock();
+    })();
+  </script>
+</body>
+</html>

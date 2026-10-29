@@ -1,0 +1,714 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="css/style.css">
+  <title>Field Supervisor · RTV Inventory Tracker</title>
+  <style>
+    /* Upload Box */
+    .upload-box{border:2px dashed #cbd5e1;border-radius:12px;padding:22px;text-align:center;
+      color:#64748b;font-size:13px;background:#f8fafc;cursor:pointer;transition:.15s}
+    .upload-box:hover{border-color:#2E5299;background:#eef2fb;color:#2E5299}
+    .upload-box.has-file{border-style:solid;border-color:#059669;background:#ecfdf5;color:#065f46;text-align:left}
+    .upload-name{font-weight:600;font-size:14px;color:#0f172a}
+    .upload-meta{font-size:12px;color:#64748b;margin-top:2px}
+    .req::after{content:" *";color:#dc2626}
+
+    /* Table Styling */
+    .etable small{color:#64748b;font-size:11.5px;display:block;line-height:1.3}
+    .etable .em{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:12px;
+      color:#334155;background:#eef2f7;padding:2px 6px;border-radius:4px}
+    .etable .pill{display:inline-block;background:#eef2f7;color:#334155;font-size:11px;
+      padding:2px 8px;border-radius:999px;margin:1px 3px 1px 0}
+    .etable .pill.has{background:#dbeafe;color:#1e40af;font-weight:600}
+
+    /* The Assign Button */
+    .btn-assign {
+      background: #2E5299; color: #fff; border: 0; padding: 8px 16px;
+      border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px;
+      transition: 0.15s;
+    }
+    .btn-assign:hover { background: #244585; }
+
+    /* Summary Bar */
+    .summary-bar{position:fixed;left:0;right:0;bottom:0;background:#0f172a;color:#fff;
+      padding:12px 24px;display:flex;justify-content:space-between;align-items:center;
+      gap:14px;z-index:60;box-shadow:0 -4px 16px rgba(15,23,42,.2)}
+    .summary-bar b{color:#93c5fd;font-variant-numeric:tabular-nums}
+    .summary-bar button{background:#2E5299;color:#fff;padding:9px 18px;border-radius:8px;
+      font-weight:600;border:0;cursor:pointer}
+    .summary-bar button:hover{background:#244585}
+    body.has-bar main{padding-bottom:100px}
+
+    /* Modal Core */
+    .modal { position: fixed; inset: 0; background: rgba(15,23,42,0.6); z-index: 1000;
+      display: none; align-items: center; justify-content: center; padding: 20px; }
+    .modal.open { display: flex; }
+
+    .modal-card { background: #fff; border-radius: 14px; width: min(650px, 100%); max-height: 90vh;
+      display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(15,23,42,0.3); overflow: hidden; }
+
+    .modal-header { display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 20px; border-bottom: 1px solid #e2e8f0; }
+    .modal-header h3 { margin: 0; font-size: 16px; color: #0f172a; }
+    .modal-header button { background: transparent; border: 0; font-size: 24px; color: #64748b; cursor: pointer; }
+
+    .modal-body { padding: 20px; overflow-y: auto; flex: 1; }
+
+    .modal-footer { display: flex; align-items: center; gap: 10px; padding: 14px 20px;
+      border-top: 1px solid #e2e8f0; background: #f9fafb; }
+    .modal-footer .count { flex: 1; color: #64748b; font-size: 13px; }
+
+    /* Modal Tabs */
+    .modal-tabs { display: flex; border-bottom: 1px solid #e2e8f0; background: #f8fafc; padding: 0 20px; }
+    .modal-tab { background: transparent; border: 0; border-bottom: 2px solid transparent; padding: 12px 16px;
+      font-size: 14px; font-weight: 500; color: #64748b; cursor: pointer; }
+    .modal-tab.active { border-bottom-color: #2E5299; color: #2E5299; }
+
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+
+    /* Asset Picker */
+    .picker-badge { padding: 8px 12px; border-radius: 8px; font-size: 12px; margin-bottom: 12px;
+      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+    .picker-badge.ok { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+    .picker-badge.warn { background: #fef3c7; color: #92400e; }
+    .picker-badge a { color: #2E5299; font-weight: 600; text-decoration: underline; cursor: pointer; }
+
+    .pick-search { display: flex; gap: 8px; margin-bottom: 12px; }
+    .pick-search input { flex: 1; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; }
+
+    .pick-list { border: 1px solid #e2e8f0; border-radius: 8px; max-height: 250px; overflow-y: auto; }
+    .pick-row { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-bottom: 1px solid #f1f5f9; cursor: pointer; margin: 0; }
+    .pick-row:hover { background: #f8fafc; }
+    .pick-row input { margin-top: 3px; cursor: pointer; }
+    .pick-row b { font-size: 13px; color: #0f172a; display: block; }
+    .pick-row small { font-size: 11px; color: #64748b; display: block; }
+
+    /* Bulk Inputs */
+    .bulk-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .bulk-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 500; color: #334155; }
+    .bulk-grid input { padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <header id="nav"></header>
+  <main>
+    <h1>Assgin Inventory to enumerators</h1>
+    <p class="sub">Assign assests to enumerators and submit signed inventory  document for the whole batch.</p>
+    <div id="msg" class="msg" hidden></div>
+
+    <section class="card">
+      <h2>Step 1 · Batch details</h2>
+      <div class="grid">
+        <label>District
+          <select id="b_district">
+            <option value="">— select —</option>
+          </select>
+          <small>Filters the tablets available in the Assign dialog.</small>
+        </label>
+        <label>Activity<select id="b_act"></select></label>
+        <label class="wide">Reason / reference
+          <input id="b_reason" maxlength="300" autocomplete="off">
+        </label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Step 2 · Assign tablets &amp; items</h2>
+      <p class="sub" style="margin:-6px 0 12px;font-size:13px">
+        Click <b>Assign</b> on any enumerator row to pick tablets (filtered to the selected district) and set bag / charger quantities.
+      </p>
+
+      <div class="bar" style="margin-bottom:10px">
+        <input id="e_q" placeholder="Search EM, name, district or telephone…">
+        <button class="ghost" id="e_add" style="margin-left:auto" type="button">+ Add enumerator</button>
+      </div>
+
+      <div class="tw">
+        <table id="etbl" class="etable"></table>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Step 3 · Signed hand-over document <small>(required)</small></h2>
+      <div id="drop" class="upload-box" tabindex="0" role="button" aria-label="Upload PDF or JPG">
+        <div id="dropInner">
+          <b>Click to choose a file</b><br>
+          <span>PDF or JPG · max 10 MB · one file for the whole batch</span>
+        </div>
+        <input type="file" id="file" accept=".pdf,.jpg,.jpeg,application/pdf,image/jpeg" hidden>
+      </div>
+    </section>
+
+    <section class="card" id="submitCard">
+      <h2>Step 4 · Submit</h2>
+      <div id="res" class="msg">Nothing submitted yet.</div>
+      <button id="submit" type="button">Submit for approval</button>
+    </section>
+  </main>
+
+  <div class="summary-bar" id="bar" style="display:none;">
+    <div>
+      <b id="sb-c">0</b> enumerators ·
+      <b id="sb-a">0</b> tablets ·
+      <b id="sb-b">0</b> bulk items
+    </div>
+    <button id="jump" type="button">Review &amp; submit ↓</button>
+  </div>
+
+  <!-- ========== ASSIGN MODAL ========== -->
+  <div id="amodal" class="modal" aria-hidden="true">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="amodal-title">Assign items</h3>
+        <button id="amodal-close" aria-label="Close" type="button">×</button>
+      </div>
+
+      <div class="modal-tabs">
+        <button class="modal-tab active" data-tab="tbl-tab" type="button">Tablets (Serialized)</button>
+        <button class="modal-tab" data-tab="bulk-tab" type="button">Bulk Items (Bags, etc)</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- TAB 1: Tablets -->
+        <div id="tbl-tab" class="tab-pane active">
+          <div id="amodal-banner"></div>
+          <div class="pick-search">
+            <input id="amodal-search" placeholder="Search asset ID, location or holder…">
+            <button id="amodal-all" class="ghost" type="button" style="padding:0 12px;">Select All</button>
+          </div>
+          <div id="amodal-list" class="pick-list"></div>
+        </div>
+
+        <!-- TAB 2: Bulk -->
+        <div id="bulk-tab" class="tab-pane">
+          <p style="margin-top:0;font-size:13px;color:#64748b;">Enter the quantities being assigned to this specific enumerator.</p>
+          <div class="bulk-grid">
+            <label>Bags <input id="am-bag" type="number" min="0" step="1" placeholder="0"></label>
+            <label>Chargers <input id="am-charger" type="number" min="0" step="1" placeholder="0"></label>
+            <label>Tags <input id="am-tag" type="number" min="0" step="1" placeholder="0"></label>
+            <label>Extensions <input id="am-ext" type="number" min="0" step="1" placeholder="0"></label>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <span class="count" id="amodal-count">0 selected</span>
+        <button id="amodal-cancel" class="ghost" type="button">Cancel</button>
+        <button id="amodal-ok" type="button" style="background:#2E5299;color:#fff;border:0;padding:8px 16px;border-radius:6px;cursor:pointer;">Save Assignments</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== ADD ENUMERATOR MODAL ========== -->
+  <div id="emodal" class="modal" aria-hidden="true">
+    <div class="modal-card" style="width:min(500px,100%)">
+      <div class="modal-header">
+        <h3>Add enumerator</h3>
+        <button id="emodal-close" aria-label="Close" type="button">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="grid">
+          <label class="wide req">EM code
+            <input id="em-code" maxlength="20" placeholder="e.g. EM051" autocomplete="off">
+          </label>
+          <label class="wide req">Name
+            <input id="em-name" maxlength="120" autocomplete="off">
+          </label>
+          <label class="wide">District
+            <input id="em-district" maxlength="120" autocomplete="off">
+          </label>
+          <label class="wide">Telephone
+            <input id="em-phone" maxlength="40" autocomplete="off">
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <span class="count"></span>
+        <button id="emodal-cancel" class="ghost" type="button">Cancel</button>
+        <button id="emodal-save" type="button" style="background:#2E5299;color:#fff;border:0;padding:8px 16px;border-radius:6px;cursor:pointer;">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="vendor/supabase.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/notif.js"></script>
+  <script>
+    (async()=>{
+      let me;
+      try { me = await guard("field_supervisors"); }
+      catch { me = await guard("dashboard"); }
+
+      const $msg = $("#msg"), $res = $("#res");
+      const val = s => $(s).value.trim();
+      const MAX_MB = 10;
+
+      let enumerators = [];
+      let E = new Map();              
+      let allAssets = [];
+      let assetsError = null;
+      let assignments = new Map();    
+      let selectedFile = null, busy = false;
+      let modalEid = null, modalSel = new Set(), modalShowAll = false;
+
+      // CRITICAL FIX: Generates a unique ID for the map. 
+      // If the database 'id' column was deleted, it safely falls back to the EM code.
+      const getEid = (e) => e.id != null ? String(e.id) : String(e.em);
+
+      /* ---------- Modal helpers ---------- */
+      function openModal(id){
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.classList.add("open");
+        el.setAttribute("aria-hidden","false");
+        el.style.display = "flex"; 
+      }
+      function closeModal(id){
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.classList.remove("open");
+        el.setAttribute("aria-hidden","true");
+        el.style.display = ""; 
+      }
+      function anyModalOpen(){
+        return !!document.querySelector(".modal.open");
+      }
+
+      // Init Dropdown
+      $("#b_act").innerHTML = '<option value="">— select —</option>' +
+        (RTV.acts || []).map(a => `<option>${esc(a)}</option>`).join("");
+
+      /* --- LOAD DATA --- */
+      try {
+        const [eRows, lRows] = await Promise.all([
+          all("enumerators",[["em",true]]),
+          sb.from("locations").select("name").order("name")
+        ]);
+        if (lRows.error) throw lRows.error;
+        enumerators = eRows.filter(e => e.active !== false);
+        
+        // Use the robust getEid() function instead of just e.id
+        E = new Map(enumerators.map(e => [getEid(e), e]));
+        
+        $("#b_district").innerHTML = '<option value="">— select —</option>' +
+          lRows.data.map(loc => `<option value="${esc(loc.name)}">${esc(loc.name)}</option>`).join("");
+      } catch(e){
+        say($msg, "Could not load enumerators/locations: " + (e.message||e));
+        return;
+      }
+
+      try {
+        allAssets = await all("assets",[["asset_id",true]]);
+      } catch(e){
+        assetsError = e;
+        console.warn("Assets failed to load", e);
+      }
+
+      /* --- RENDER TABLE --- */
+      function renderEnumerators(){
+        const q = $("#e_q").value.toLowerCase().trim();
+        const rows = enumerators.filter(e => {
+          if (!q) return true;
+          return ((e.em||"") + " " + (e.name||"") + " " + (e.district||"") + " " + (e.telephone||""))
+            .toLowerCase().includes(q);
+        });
+
+        $("#etbl").innerHTML =
+          "<thead><tr><th>EM</th><th>Name</th><th>District</th><th>Telephone</th><th>Assigned</th><th></th></tr></thead>" +
+          "<tbody>" + (rows.length ? rows.map(e => {
+            const a = assignments.get(getEid(e));
+            const tabs = a ? a.assetIds.size : 0;
+            const bulkN = a ? Object.values(a.bulk||{}).reduce((s,n)=>s+n,0) : 0;
+            const pills = [
+              tabs ? `<span class="pill has">${tabs} tablet${tabs===1?"":"s"}</span>` : "",
+              bulkN ? `<span class="pill has">${bulkN} bulk</span>` : "",
+              (!tabs && !bulkN) ? `<span class="pill" style="background:#f1f5f9;color:#94a3b8">Not assigned</span>` : ""
+            ].filter(Boolean).join(" ");
+            return `<tr>
+              <td><span class="em">${esc(e.em)}</span></td>
+              <td><b>${esc(e.name)}</b></td>
+              <td>${esc(e.district || "—")}</td>
+              <td>${esc(e.telephone || "—")}</td>
+              <td>${pills}</td>
+              <td><button class="btn-assign" type="button" data-assign="${esc(getEid(e))}">Assign</button></td>
+            </tr>`;
+          }).join("") : '<tr><td colspan="6" class="empty">No enumerators match your search.</td></tr>') +
+          "</tbody>";
+      }
+
+      $("#e_q").oninput = renderEnumerators;
+
+      /* --- DELEGATED CLICK FOR ASSIGN BUTTONS (survives re-renders) --- */
+      $("#etbl").addEventListener("click", (ev) => {
+        const btn = ev.target.closest("button[data-assign]");
+        if (!btn) return;
+        ev.preventDefault();
+        openAssign(btn.dataset.assign);
+      });
+
+      /* --- SUMMARY BAR --- */
+      function updateSummary(){
+        let nE = 0, nA = 0, nB = 0;
+        for (const a of assignments.values()){
+          const hasAny = a.assetIds.size > 0 || Object.keys(a.bulk||{}).length > 0;
+          if (!hasAny) continue;
+          nE++;
+          nA += a.assetIds.size;
+          nB += Object.values(a.bulk||{}).reduce((s,n)=>s+n,0);
+        }
+        $("#sb-c").textContent = nE;
+        $("#sb-a").textContent = nA;
+        $("#sb-b").textContent = nB;
+
+        $("#bar").style.display = nE > 0 ? "flex" : "none";
+        document.body.classList.toggle("has-bar", nE > 0);
+      }
+
+      $("#jump").onclick = () => $("#submitCard").scrollIntoView({behavior:"smooth",block:"center"});
+
+      /* --- OPEN ASSIGN MODAL --- */
+      function openAssign(rawEid){
+        const eid = String(rawEid);
+        let e = E.get(eid);
+        if (!e) {
+          e = enumerators.find(x => getEid(x) === eid);
+          if (e) E.set(eid, e); 
+        }
+        if (!e) {
+          say($msg, "Could not find that enumerator. Refresh the page and try again.");
+          return;
+        }
+
+        modalEid = eid;
+        modalShowAll = false;
+        const a = assignments.get(eid);
+        modalSel = new Set(a ? [...a.assetIds] : []);
+
+        const bulk = (a && a.bulk) || {};
+        $("#am-bag").value     = bulk.BAG || "";
+        $("#am-charger").value = bulk.CHARGER || "";
+        $("#am-tag").value     = bulk.TAG || "";
+        $("#am-ext").value     = bulk.EXTENSION || "";
+
+        $("#amodal-title").textContent = `Assign to ${e.em} · ${e.name}`;
+        $("#amodal-search").value = "";
+
+        // Reset tabs to first tab
+        document.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
+        document.querySelector('.modal-tab[data-tab="tbl-tab"]').classList.add('active');
+        document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+        $("#tbl-tab").classList.add("active");
+
+        // Show Modal FIRST so the user always gets immediate feedback
+        openModal("amodal");
+
+        renderAssetPicker();
+        updateModalCount();
+      }
+
+      // Close Modals
+      $("#amodal-close").onclick  = () => closeModal("amodal");
+      $("#amodal-cancel").onclick = () => closeModal("amodal");
+      $("#emodal-close").onclick  = () => closeModal("emodal");
+      $("#emodal-cancel").onclick = () => closeModal("emodal");
+
+      // Backdrop click + Escape to close
+      ["amodal","emodal"].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener("mousedown", ev => {
+          if (ev.target === el) closeModal(id);
+        });
+      });
+      document.addEventListener("keydown", ev => {
+        if (ev.key === "Escape" && anyModalOpen()) {
+          if ($("#amodal").classList.contains("open")) closeModal("amodal");
+          if ($("#emodal").classList.contains("open")) closeModal("emodal");
+        }
+      });
+
+      /* --- MODAL TABS --- */
+      document.querySelectorAll('.modal-tab').forEach(tab => {
+        tab.onclick = () => {
+          document.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
+          document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+          tab.classList.add('active');
+          $("#" + tab.dataset.tab).classList.add('active');
+        };
+      });
+
+      /* --- RENDER ASSETS INSIDE MODAL --- */
+      function usedElsewhere(){
+        const s = new Set();
+        for (const [eid, a] of assignments){
+          if (String(eid) === String(modalEid)) continue;
+          for (const id of a.assetIds) s.add(id);
+        }
+        return s;
+      }
+
+      function matchesDistrict(loc, district){
+        if (!district) return true;
+        const l = String(loc || "").toLowerCase().trim();
+        const d = String(district).toLowerCase().trim();
+        if (!l) return false;
+        return l.includes(d) || d.includes(l);
+      }
+
+      function renderAssetPicker(){
+        const list = $("#amodal-list"), banner = $("#amodal-banner");
+
+        if (assetsError){
+          banner.innerHTML = "";
+          list.innerHTML = `<div style="padding:20px;color:#991b1b;text-align:center;">
+            <b>Could not load assets from database.</b><br>
+            <small>${esc(assetsError.message || String(assetsError))}</small>
+          </div>`;
+          return;
+        }
+
+        const q = $("#amodal-search").value.toLowerCase().trim();
+        const taken = usedElsewhere();
+        const district = $("#b_district").value.trim();
+        const useDistrict = !!district && !modalShowAll;
+
+        const visible = allAssets.filter(a => {
+          if (taken.has(a.asset_id)) return false;
+          if (useDistrict && !matchesDistrict(a.current_location, district)) return false;
+          if (!q) return true;
+          return (a.asset_id + " " + (a.current_location||"") + " " + (a.current_holder||""))
+            .toLowerCase().includes(q);
+        });
+
+        const pool = allAssets.filter(a => !taken.has(a.asset_id));
+        const inDistrict = district ? pool.filter(a => matchesDistrict(a.current_location, district)).length : pool.length;
+
+        // Banner
+        if (!district){
+          banner.innerHTML = `<div class="picker-badge warn">
+            <span>⚠ No district selected above — showing <b>all ${inDistrict}</b> assets.</span>
+          </div>`;
+        } else if (modalShowAll){
+          banner.innerHTML = `<div class="picker-badge ok">
+            <span>📍 Showing <b>all districts</b> (${pool.length}).</span>
+            <a id="amodal-filter-district">Filter to ${esc(district)}</a>
+          </div>`;
+        } else {
+          banner.innerHTML = `<div class="picker-badge ok">
+            <span>📍 Showing assets in <b>${esc(district)}</b> only (${inDistrict} found).</span>
+            <a id="amodal-show-all">Show all districts</a>
+          </div>`;
+        }
+
+        // List items
+        if (!visible.length){
+          list.innerHTML = `<div style="padding:20px;text-align:center;color:#64748b;font-size:13px;">No available assets found.</div>`;
+        } else {
+          list.innerHTML = visible.map(a => `
+            <label class="pick-row">
+              <input type="checkbox" data-aid="${esc(a.asset_id)}" ${modalSel.has(a.asset_id)?"checked":""}>
+              <div>
+                <b>${esc(a.asset_id)}</b>
+                <small>${esc(a.asset_type||"Asset")} · ${esc(a.current_location||"—")} · ${esc(a.current_holder||"—")}</small>
+              </div>
+            </label>`).join("");
+        }
+
+        // Banner clicks
+        document.querySelector("#amodal-show-all")?.addEventListener("click", e => {
+          e.preventDefault(); modalShowAll = true; renderAssetPicker();
+        });
+        document.querySelector("#amodal-filter-district")?.addEventListener("click", e => {
+          e.preventDefault(); modalShowAll = false; renderAssetPicker();
+        });
+
+        // Checkboxes
+        list.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+          cb.onchange = () => {
+            if (cb.checked) modalSel.add(cb.dataset.aid);
+            else modalSel.delete(cb.dataset.aid);
+            updateModalCount();
+          };
+        });
+      }
+
+      /* --- MODAL UTILS --- */
+      function updateModalCount(){
+        const bulkN = ["#am-bag","#am-charger","#am-tag","#am-ext"]
+          .reduce((s,sel) => s + (parseInt($(sel).value,10)||0), 0);
+        $("#amodal-count").textContent =
+          `${modalSel.size} tablet${modalSel.size===1?"":"s"}` +
+          (bulkN ? ` · ${bulkN} bulk` : "") + " selected";
+      }
+
+      $("#amodal-search").oninput = renderAssetPicker;
+      ["#am-bag","#am-charger","#am-tag","#am-ext"].forEach(s => $(s).oninput = updateModalCount);
+
+      $("#amodal-all").onclick = () => {
+        const vis = document.querySelectorAll('#amodal-list input[type="checkbox"]');
+        if (!vis.length) return;
+        const allChecked = [...vis].every(cb => cb.checked);
+        vis.forEach(cb => {
+          cb.checked = !allChecked;
+          if (cb.checked) modalSel.add(cb.dataset.aid);
+          else modalSel.delete(cb.dataset.aid);
+        });
+        updateModalCount();
+      };
+
+      $("#amodal-ok").onclick = () => {
+        const bulk = {};
+        for (const [k, sel] of Object.entries({BAG:"#am-bag",CHARGER:"#am-charger",TAG:"#am-tag",EXTENSION:"#am-ext"})){
+          const n = parseInt($(sel).value, 10) || 0;
+          if (n > 0) bulk[k] = n;
+        }
+        const assetIds = new Set(modalSel);
+        const key = String(modalEid);
+
+        if (assetIds.size === 0 && Object.keys(bulk).length === 0){
+          assignments.delete(key);
+        } else {
+          const enumObj = E.get(key) || enumerators.find(x => getEid(x) === key);
+          assignments.set(key, {
+            enumerator: enumObj,
+            assetIds,
+            bulk
+          });
+        }
+
+        closeModal("amodal");
+        renderEnumerators();
+        updateSummary();
+      };
+
+      /* --- ADD ENUMERATOR --- */
+      $("#e_add").onclick = () => {
+        ["#em-code","#em-name","#em-district","#em-phone"].forEach(s => $(s).value = "");
+        openModal("emodal");
+        $("#em-code").focus();
+      };
+
+      $("#emodal-save").onclick = async () => {
+        const em = val("#em-code").toUpperCase();
+        const name = val("#em-name");
+        if (!em || !name) return alert("EM code and Name are required.");
+
+        const row = { em, name, district: val("#em-district") || null, telephone: val("#em-phone") || null, active: true };
+
+        const { data, error } = await sb.from("enumerators").insert(row).select().single();
+        if (error){
+          if (String(error.message).toLowerCase().includes("duplicate")) return alert("EM code " + em + " already exists.");
+          return alert("Could not add enumerator: " + error.message);
+        }
+
+        enumerators.push(data);
+        enumerators.sort((a,b) => String(a.em).localeCompare(String(b.em)));
+        E.set(getEid(data), data);
+        closeModal("emodal");
+        renderEnumerators();
+      };
+
+      /* --- FILE UPLOAD --- */
+      const drop = $("#drop"), fileInput = $("#file");
+      const resetDrop = () => {
+        selectedFile = null; fileInput.value = "";
+        drop.classList.remove("has-file");
+        $("#dropInner").innerHTML = `<b>Click to choose a file</b><br><span>PDF or JPG · max ${MAX_MB} MB</span>`;
+      };
+
+      drop.onclick = e => {
+        if (e.target.closest("#clearFile")){ e.preventDefault(); resetDrop(); return; }
+        fileInput.click();
+      };
+
+      drop.onkeydown = e => {
+        if (e.key === "Enter" || e.key === " "){ e.preventDefault(); fileInput.click(); }
+      };
+
+      fileInput.onchange = () => {
+        const f = fileInput.files[0];
+        if (!f) return;
+        if (f.size > MAX_MB * 1024 * 1024) return say($msg,"File exceeds "+MAX_MB+" MB.");
+
+        selectedFile = f;
+        drop.classList.add("has-file");
+        $("#dropInner").innerHTML = `
+          <div class="upload-name">${esc(f.name)}</div>
+          <div class="upload-meta">${(f.size/1024/1024).toFixed(2)} MB ·
+            <a href="#" id="clearFile" style="color:#dc2626">Remove</a></div>`;
+      };
+
+      /* --- SUBMIT --- */
+      $("#submit").onclick = async () => {
+        if (busy) return;
+        const out = (t,ok) => { $res.className = "msg " + (ok ? "ok" : "bad"); $res.textContent = t; };
+
+        try {
+          if (!selectedFile) throw new Error("Attach the signed PDF or JPG for the batch.");
+
+          const payload = [];
+          for (const [eid, a] of assignments){
+            const bulk = Object.entries(a.bulk || {}).map(([k,n]) => ({ item_type: k, quantity: n }));
+            if (a.assetIds.size === 0 && bulk.length === 0) continue;
+            
+            // Safely fall back to sending the EM code if 'id' does not exist
+            payload.push({
+              enumerator_id: a.enumerator.id != null ? a.enumerator.id : a.enumerator.em,
+              em:           a.enumerator.em,
+              name:         a.enumerator.name,
+              district:     a.enumerator.district || null,
+              telephone:    a.enumerator.telephone || null,
+              asset_ids:    [...a.assetIds],
+              bulk_items:   bulk
+            });
+          }
+          if (!payload.length) throw new Error("Assign at least one item to an enumerator.");
+
+          busy = true; $("#submit").disabled = true;
+          out("Uploading attachment…", true);
+
+          const safeName = selectedFile.name.replace(/[^\w.\-]/g,"_");
+          const path = `${me.email}/${Date.now()}-${safeName}`;
+
+          const up = await sb.storage.from("contractor-attachments").upload(path, selectedFile, {
+            contentType: selectedFile.type || undefined, upsert: false
+          });
+          if (up.error) throw new Error("Upload failed: " + up.error.message);
+
+          out("Submitting batch…", true);
+
+          const { data, error } = await sb.rpc("submit_enumerator_batch", {
+            p_district:         val("#b_district") || null,
+            p_activity:         val("#b_act") || null,
+            p_reason:           val("#b_reason") || null,
+            p_attachment_path:  path,
+            p_attachment_name:  selectedFile.name,
+            p_attachment_mime:  selectedFile.type || null,
+            p_assignments:      payload
+          });
+
+          if (error) throw new Error(error.message);
+
+          assignments.clear(); renderEnumerators(); updateSummary();
+          ["#b_district","#b_act","#b_reason"].forEach(s => $(s).value = "");
+          resetDrop();
+
+          out(`Batch ${esc(data.reference)} submitted successfully.`, true);
+          if (window.RTVBell) window.RTVBell.updateBadge();
+        } catch(e){
+          out("Submit failed: " + (e.message || e));
+        } finally {
+          busy = false; $("#submit").disabled = false;
+        }
+      };
+
+      renderEnumerators();
+      updateSummary();
+    })();
+  </script>
+</body>
+</html>

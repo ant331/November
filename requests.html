@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="css/style.css">
+  <title>Item Requests · RTV Inventory Tracker</title>
+  <style>
+    .b.warn{background:#fef3c7;color:#92400e}
+    #tbl td small{display:block;color:#64748b;font-size:11.5px;line-height:1.3}
+    #tbl .num{font-variant-numeric:tabular-nums}
+    #tbl .zero{color:#cbd5e1}
+    #tbl .acts{white-space:nowrap}
+    #tbl .acts button{padding:5px 10px;font-size:12px}
+    #tbl .own{font-size:12px;color:#64748b}
+
+    dialog#dlg{border:0;border-radius:14px;padding:0;width:min(440px,92vw);
+      box-shadow:0 20px 60px rgba(15,23,42,.3)}
+    dialog#dlg::backdrop{background:rgba(15,23,42,.5)}
+    .dlg-body{padding:20px}
+    .dlg-body h3{margin:0 0 4px;font-size:16px}
+    .dlg-body .sub{margin:0 0 14px;font-size:13px}
+    .dlg-body label{display:block;font-size:13px;color:#334155;font-weight:500}
+    .dlg-body input{width:100%;margin-top:6px;padding:9px 10px;border:1px solid #d5dbe6;border-radius:8px;font-size:14px}
+    .dlg-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}
+  </style>
+</head>
+<body>
+  <header id="nav"></header>
+  <main>
+    <h1>Item requests</h1>
+    <p class="sub" id="sub">Loading…</p>
+    <div id="msg" class="msg" hidden></div>
+
+    <div class="bar">
+      <input id="q" placeholder="Search reference, district, requester or reason…">
+      <select id="f_status"></select>
+      <select id="f_destination"></select>
+      <select id="f_requester"></select>
+      <button class="ghost" id="csv">⤓ Export CSV</button>
+      <button class="ghost" id="new" type="button">+ New request</button>
+    </div>
+
+    <div class="tw"><table id="tbl"></table></div>
+    <div class="pg" id="pg"></div>
+  </main>
+
+  <dialog id="dlg" aria-labelledby="dlgTitle">
+    <div class="dlg-body">
+      <h3 id="dlgTitle"></h3>
+      <p class="sub" id="dlgSummary"></p>
+      <label><span id="dlgLabel"></span>
+        <input id="dlgNote" maxlength="300" autocomplete="off">
+      </label>
+      <div id="dlgErr" class="msg bad" hidden style="margin-top:12px"></div>
+      <div class="dlg-actions">
+        <button class="ghost" id="dlgCancel" type="button">Cancel</button>
+        <button id="dlgOk" type="button">Confirm</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="vendor/supabase.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/notif.js"></script>
+  <script>
+    (async()=>{
+      const me = await guard("requests");
+      const isAdmin = me.role === "admin";
+      const myEmail = (me.email || "").toLowerCase();
+
+      $("#sub").textContent = isAdmin
+        ? "Every request from every district. Approve or reject pending ones, and export the list as CSV."
+        : "Requests for your districts. Admins approve or reject them; the decision appears here.";
+      $("#new").onclick = () => location.href = "request.html";
+      if (!isAdmin) $("#csv").hidden = true;          // downloads are for admins
+
+      const when = v => String(v || "").slice(0, 16).replace("T", " ");
+      const num  = v => v ? `<span class="num">${esc(v)}</span>` : '<span class="num zero">0</span>';
+
+      // Derived fields: used by the table, the search box, the filters and the CSV.
+      function decorate(r) {
+        r.requester = r.requester_name ? `${r.requester_name} <${r.requested_by}>` : r.requested_by;
+        r.decision  = r.status === "PENDING" ? "" :
+          [r.decided_by, when(r.decided_at) && "on " + when(r.decided_at) + " UTC"].filter(Boolean).join(" ") +
+          (r.decision_note ? " — " + r.decision_note : "");
+        return r;
+      }
+      const itemsText = r => [["tablets", r.tablets], ["bags", r.bags], ["chargers", r.chargers],
+          ["tags", r.tags], ["extensions", r.extensions]]
+        .filter(([, n]) => n > 0).map(([k, n]) => `${n} ${k}`).join(", ");
+
+      let rows;
+      try {
+        rows = (await all("item_requests", [["created_at", false], ["id", false]])).map(decorate);
+      } catch (e) {
+        say($("#msg"), "Could not load requests: " + (e.message || e));
+        return;
+      }
+
+      const badge = v => `<span class="b ${v === "APPROVED" ? "ok" : v === "REJECTED" ? "no" : "warn"}">${esc(v)}</span>`;
+      const actions = (v, r) => {
+        if (r.status !== "PENDING") return "";
+        if (r.requested_by.toLowerCase() === myEmail) return '<span class="own">Needs another admin</span>';
+        return `<span class="acts"><button data-act="approve" data-id="${esc(r.id)}">Approve</button> ` +
+               `<button class="ghost" data-act="reject" data-id="${esc(r.id)}">Reject</button></span>`;
+      };
+
+      const cols = [
+        ["reference", "Reference", v => `<span class="mono">${esc(v)}</span>`],
+        ["created_at", "Submitted (UTC)", v => esc(when(v))],
+        ["requester", "Requested by", (v, r) => r.requester_name
+          ? `${esc(r.requester_name)}<small>${esc(r.requested_by)}</small>` : esc(r.requested_by)],
+        ["destination", "District"],
+        ["needed_by", "Needed by"],
+        ["tablets", "Tablets", num],
+        ["bags", "Bags", num],
+        ["chargers", "Chargers", num],
+        ["tags", "Tags", num],
+        ["extensions", "Extensions", num],
+        ["reason", "Reason", v => esc(v || "—")],
+        ["status", "Status", badge],
+        ["decision", "Decision", v => esc(v || "—")]
+      ];
+      if (isAdmin) cols.push(["_actions", "", actions, true]);   // 4th item: leave out of the CSV
+
+      view({ rows, file: "item-requests.csv", cols,
+             sel: [["status", "Status"], ["destination", "District"], ["requester", "Requested by"]] });
+
+      // Admins start on what needs a decision.
+      if (isAdmin && rows.some(r => r.status === "PENDING")) {
+        $("#f_status").value = "PENDING";
+        $("#f_status").dispatchEvent(new Event("change"));
+      }
+      const redraw = () => $("#q").dispatchEvent(new Event("input"));
+
+      /* ---------- Approve / reject ---------- */
+      const dlg = $("#dlg"), note = $("#dlgNote"), err = $("#dlgErr"), ok = $("#dlgOk");
+      let current = null;                                   // { row, act }
+
+      function ask(row, act) {
+        current = { row, act };
+        $("#dlgTitle").textContent = (act === "approve" ? "Approve " : "Reject ") + row.reference;
+        $("#dlgSummary").textContent = `${row.destination} · needed by ${row.needed_by} · ${itemsText(row)}`;
+        $("#dlgLabel").textContent = act === "approve" ? "Note (optional)" : "Reason for rejecting (required)";
+        ok.textContent = act === "approve" ? "Approve request" : "Reject request";
+        note.value = ""; err.hidden = true; ok.disabled = false;
+        dlg.showModal();
+        note.focus();
+      }
+
+      $("#tbl").addEventListener("click", e => {
+        const b = e.target.closest("button[data-act]");
+        if (!b) return;
+        const row = rows.find(r => r.id === b.dataset.id);
+        if (row) ask(row, b.dataset.act);
+      });
+      $("#dlgCancel").onclick = () => dlg.close();
+      note.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); ok.click(); } };
+
+      ok.onclick = async () => {
+        if (!current) return;
+        const { row, act } = current;
+        const text = note.value.trim();
+        if (act === "reject" && !text) {
+          err.textContent = "Add a note explaining why the request is rejected.";
+          err.hidden = false;
+          return;
+        }
+        ok.disabled = true;
+        const { data, error } = await sb.rpc(act === "approve" ? "approve_item_request" : "reject_item_request",
+                                             { p_id: row.id, p_note: text || null });
+        if (error) {
+          err.textContent = error.message;
+          err.hidden = false;
+          ok.disabled = false;
+          return;
+        }
+        Object.assign(row, decorate(data));
+        dlg.close();
+        say($("#msg"), `${row.reference} ${act === "approve" ? "approved" : "rejected"}.`, true);
+        redraw();
+        if (window.RTVBell) window.RTVBell.updateBadge();
+      };
+    })();
+  </script>
+</body>
+</html>

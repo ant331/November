@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="css/style.css">
+  <title>Request Items · RTV Inventory Tracker</title>
+  <style>
+    .bulk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+    .bulk-grid label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:#334155}
+    .bulk-grid input{width:100%}
+    .bulk-note{font-size:12px;color:#64748b;margin:4px 0 12px}
+    #res a{color:inherit;font-weight:600}
+  </style>
+</head>
+<body>
+  <header id="nav"></header>
+  <main>
+    <h1>Request items</h1>
+    <p class="sub">Ask for tablets, bags, chargers, tags or extensions for one of your districts. An admin approves or rejects each request, and you can follow its status under Item Requests.</p>
+    <div id="msg" class="msg" hidden></div>
+
+    <section class="card">
+      <h2>Step 1 · Request details</h2>
+      <div class="grid">
+        <label>Destination district
+          <select id="dest">
+            <option value="">— select —</option>
+          </select>
+        </label>
+        <label>Needed by
+          <input id="req_date" type="date" required>
+        </label>
+        <label class="wide">Reason
+          <input id="reason" maxlength="300" autocomplete="off" placeholder="e.g. New enumerators onboarding in this district">
+        </label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Step 2 · Items requested</h2>
+      <p class="bulk-note">Enter the quantity for each item you need. Leave blank or 0 to skip.</p>
+      <div class="bulk-grid">
+        <label>Tablets <input id="b_tablet" type="number" min="0" step="1" placeholder="0"></label>
+        <label>Bags <input id="b_bag" type="number" min="0" step="1" placeholder="0"></label>
+        <label>Chargers <input id="b_charger" type="number" min="0" step="1" placeholder="0"></label>
+        <label>Tags <input id="b_tag" type="number" min="0" step="1" placeholder="0"></label>
+        <label>Extensions <input id="b_ext" type="number" min="0" step="1" placeholder="0"></label>
+      </div>
+    </section>
+
+    <section class="card" id="submitCard">
+      <h2>Step 3 · Send request</h2>
+      <div id="res" class="msg">Nothing sent yet.</div>
+      <button id="submit" type="button">Send request to admin</button>
+    </section>
+  </main>
+
+  <script src="vendor/supabase.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/notif.js"></script>
+  <script>
+    (async()=>{
+      // Operators and admins only (enforced by guard() and, for real, by the database).
+      const me = await guard("request");
+      const val = s => $(s).value.trim();
+      const res = $("#res");
+      const out = (t, ok) => { res.className = "msg " + (ok ? "ok" : "bad"); res.textContent = t; };
+
+      let busy = false;
+
+      // Today in the browser's own time zone (valueAsDate would use UTC and can show yesterday).
+      const today = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+      $("#req_date").min = today();
+      $("#req_date").value = today();
+
+      // Destinations: operators get only their assigned districts, admins get every district.
+      try {
+        const { data, error } = await sb.rpc("my_locations");
+        if (error) throw error;
+        const names = (data || []).filter(n => n !== "LOST");
+        $("#dest").innerHTML = '<option value="">— select —</option>' +
+          names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join("");
+        if (names.length === 1) $("#dest").value = names[0];
+        if (!names.length) {
+          say($("#msg"), "No districts are assigned to your account yet. Ask an admin to assign one, then reload this page.");
+          $("#submit").disabled = true;
+          return;
+        }
+      } catch (e) {
+        say($("#msg"), "Could not load your districts: " + (e.message || e));
+        $("#submit").disabled = true;
+        return;
+      }
+
+      // Read quantities
+      const bulkEls = { TABLET: "#b_tablet", BAG: "#b_bag", CHARGER: "#b_charger", TAG: "#b_tag", EXTENSION: "#b_ext" };
+      function readItems() {
+        const items = [];
+        for (const [type, sel] of Object.entries(bulkEls)) {
+          const raw = $(sel).value.trim();
+          if (!raw) continue;
+          const n = Number(raw);
+          if (!Number.isInteger(n) || n < 0) throw new Error("Enter a whole number for " + type.toLowerCase() + "s.");
+          if (n === 0) continue;
+          items.push({ item_type: type, quantity: n });
+        }
+        return items;
+      }
+
+      $("#submit").onclick = async () => {
+        if (busy) return;
+        try {
+          const dest = val("#dest");
+          const date = val("#req_date");
+          if (!dest) throw new Error("Choose a destination district.");
+          if (!date) throw new Error("Choose the date you need the items.");
+          const items = readItems();
+          if (!items.length) throw new Error("Enter a quantity for at least one item.");
+
+          busy = true;
+          $("#submit").disabled = true;
+          out("Sending request…", true);
+
+          const { data, error } = await sb.rpc("submit_item_request", {
+            p_destination: dest,
+            p_needed_by:   date,
+            p_reason:      val("#reason") || null,
+            p_items:       items
+          });
+          if (error) throw new Error(error.message);
+
+          // Clear the form
+          $("#reason").value = "";
+          Object.values(bulkEls).forEach(s => $(s).value = "");
+          $("#req_date").value = today();
+          // Operators usually request again for the same district, so keep it selected for them.
+          if (me.role !== "operator") $("#dest").value = "";
+
+          res.className = "msg ok";
+          res.innerHTML = `Request ${esc(data.reference)} sent. An admin will approve or reject it. ` +
+                          `<a href="requests.html">View item requests</a>`;
+          if (window.RTVBell) window.RTVBell.updateBadge();
+        } catch (e) {
+          out("Could not send request: " + (e.message || e));
+        } finally {
+          busy = false;
+          $("#submit").disabled = false;
+        }
+      };
+    })();
+  </script>
+</body>
+</html>

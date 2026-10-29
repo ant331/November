@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="css/style.css">
+  <title>Dashboard · RTV Inventory Tracker</title>
+</head>
+<body>
+  <header id="nav"></header>
+  <main>
+    <h1>Asset Movement Dashboard</h1>
+    <p class="sub" id="sub">Live operational view</p>
+    <div id="msg" class="msg" hidden></div>
+
+    <!-- ===== Serialized asset KPIs ===== -->
+    <section class="kpis">
+      <div class="kpi"><b>Total assets</b><span id="k1" class="skel">—</span></div>
+      <div class="kpi"><b>Movements recorded</b><span id="k2" class="skel">—</span></div>
+      <div class="kpi"><b>Total transfers</b><span id="k3" class="skel">—</span></div>
+      <div class="kpi"><b>Current locations</b><span id="k4" class="skel">—</span></div>
+    </section>
+
+    <!-- ===== Non-serialized KPIs (stock on hand in the districts this user can see) ===== -->
+    <p class="bulk-scope" id="bulkScope"></p>
+    <section class="kpis" style="margin-top:6px">
+      <div class="kpi"><b>Bags</b><span id="k5" class="skel">—</span></div>
+      <div class="kpi"><b>Chargers</b><span id="k6" class="skel">—</span></div>
+      <div class="kpi"><b>Tags</b><span id="k7" class="skel">—</span></div>
+      <div class="kpi"><b>Extensions</b><span id="k8" class="skel">—</span></div>
+    </section>
+
+    <!-- ===== Pending approvals (count + preview) ===== -->
+    <section class="kpis" style="margin-top:14px">
+      <div class="kpi kpi-wide">
+        <div class="pending-head">
+          <b>My pending approvals</b>
+          <span id="k9" class="skel">—</span>
+          <a href="approvals.html" class="pending-link">View all →</a>
+        </div>
+        <div id="pending-list" class="pending-list"></div>
+      </div>
+    </section>
+
+    <section class="status" id="st"></section>
+
+    <!-- ===== Charts ===== -->
+    <section class="charts">
+      <div class="card cbox loc-card">
+        <div class="loc-head">
+          <h3>Locations of Tablet</h3>
+          <input id="locq" placeholder="Search location…" autocomplete="off">
+        </div>
+        <div class="loc-list" id="loclist"></div>
+      </div>
+      <div class="card cbox"><canvas id="c1"></canvas></div>
+      <div class="card cbox"><canvas id="c2"></canvas></div>
+      <div class="card cbox"><canvas id="c4"></canvas></div>
+    </section>
+  </main>
+
+  <style>
+    .bulk-scope{font-size:12px;color:#64748b;margin:14px 0 0}
+    .loc-card{display:flex;flex-direction:column;min-height:320px}
+    .loc-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+    .loc-head h3{margin:0;font-size:14px;color:#0f172a;font-weight:600}
+    .loc-head input{padding:7px 10px;border:1px solid #d5dbe6;border-radius:8px;font-size:13px;min-width:180px}
+    .loc-list{overflow:auto;flex:1;max-height:280px}
+    .loc-row{display:flex;align-items:center;gap:10px;padding:6px 2px;border-bottom:1px solid #eef2f7;font-size:13px}
+    .loc-row:last-child{border-bottom:0}
+    .loc-name{flex:1;color:#334155;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .loc-bar{height:8px;border-radius:6px;background:#015158;min-width:4px}
+    .loc-count{min-width:36px;text-align:right;color:#0f172a;font-weight:600}
+    .loc-empty{color:#94a3b8;font-size:13px;padding:16px 0;text-align:center}
+
+    /* Pending-approvals card */
+    .kpi-wide{grid-column:1/-1}
+    .pending-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;width:100%}
+    .pending-head b{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#64748b;font-weight:600}
+    .pending-head #k9{font-size:24px;font-weight:700;color:#015158;line-height:1}
+    .pending-link{margin-left:auto;font-size:12px;color:#015158;text-decoration:none;font-weight:600}
+    .pending-link:hover{text-decoration:underline}
+    .pending-list{display:flex;flex-direction:column;gap:6px;margin-top:12px;max-height:260px;overflow:auto;width:100%}
+    .pending-list .empty{color:#94a3b8;font-size:13px;padding:6px 0}
+    .pending-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid #eef2f7;border-radius:8px;background:#f8fafc;font-size:13px}
+    .pending-item .pi-main{flex:1;min-width:0}
+    .pending-item .pi-title{font-weight:600;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .pending-item .pi-meta{color:#64748b;font-size:11.5px;margin-top:2px}
+    .pending-item .pi-pill{font-size:11px;padding:2px 8px;border-radius:999px;background:#fef3c7;color:#92400e;font-weight:600;white-space:nowrap}
+    .pi-more{font-size:12px;color:#64748b;padding:4px 2px}
+    .pi-more a{color:#015158;font-weight:600;text-decoration:none}
+    .pi-more a:hover{text-decoration:underline}
+  </style>
+
+  <script src="vendor/chart.umd.js"></script>
+  <script src="vendor/supabase.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/notif.js"></script>
+  <script>
+    (async()=>{
+      const me = await guard("dashboard");
+      try{
+        // Non-serialized items: stock on hand per location, limited to the districts this
+        // user may see (operators: their own districts; admins/viewers: all).
+        const [A,M,myLocRes,bulkRes] = await Promise.all([
+          all("assets",[["asset_id",true]]),
+          all("movements",[["moved_at",false],["id",false]]),
+          sb.rpc("my_locations"),
+          sb.rpc("bulk_availability")
+        ]);
+
+        // Pending transfers visible to me on the Approvals page ("To approve" tab).
+        const myEmail = (me.email || "").toLowerCase();
+        const pendingRes = await sb.from("pending_transfers")
+          .select("id,movement_type,to_location,submitted_by,created_at,activity,asset_ids,bulk_items", { count: "exact" })
+          .neq("submitted_by", myEmail)
+          .eq("status", "PENDING")
+          .order("created_at", { ascending: false })
+          .limit(8);
+
+        const cnt=(arr,f)=>{const m=new Map();for(const x of arr){const k=f(x);if(k)m.set(k,(m.get(k)||0)+1)}return m};
+        const top=(m,n)=>[...m].sort((a,b)=>b[1]-a[1]||String(a[0]).localeCompare(String(b[0]))).slice(0,n);
+        const loc=cnt(A,a=>a.current_location),st=cnt(A,a=>a.status);
+
+        // Remove skeleton shimmer
+        ["k1","k2","k3","k4","k5","k6","k7","k8","k9"]
+          .forEach(id=>$("#"+id).classList.remove("skel"));
+
+        // Serialized KPIs
+        $("#k1").textContent=A.length;
+        $("#k2").textContent=M.length;
+        $("#k3").textContent=M.filter(r=>r.movement_type==="TRANSFER").length;
+        $("#k4").textContent=loc.size;
+
+        // Non-serialized totals = stock on hand in the user's own districts only
+        const isOperator = me.role === "operator";
+        if(myLocRes.error || bulkRes.error){
+          ["k5","k6","k7","k8"].forEach(id=>$("#"+id).textContent="—");
+          $("#bulkScope").textContent="Non-serialized stock could not be loaded: "+
+            ((myLocRes.error||bulkRes.error).message||"unknown error");
+        } else {
+          const mine=new Set((myLocRes.data||[]).filter(n=>n!=="LOST"));
+          const bulkTotals={};
+          for(const r of (bulkRes.data||[])){
+            if(!mine.has(r.location)) continue;   // never count a district the user cannot see
+            const t=String(r.item_type||"").toUpperCase();
+            bulkTotals[t]=(bulkTotals[t]||0)+(Number(r.on_hand)||0);
+          }
+          $("#k5").textContent=bulkTotals["BAG"]||0;
+          $("#k6").textContent=bulkTotals["CHARGER"]||0;
+          $("#k7").textContent=bulkTotals["TAG"]||0;
+          $("#k8").textContent=bulkTotals["EXTENSION"]||0;
+          $("#bulkScope").textContent = isOperator
+            ? (mine.size ? "Stock on hand in your districts: "+[...mine].sort().join(", ")
+                         : "No districts are assigned to you yet, so there is no stock to show.")
+            : "Stock on hand across all districts";
+        }
+
+        // ---- Pending approvals: count + preview ----
+        const pcount = pendingRes.error ? 0 : (pendingRes.count ?? (pendingRes.data?.length || 0));
+        $("#k9").textContent = pcount;
+
+        const pendings = pendingRes.error ? [] : (pendingRes.data || []);
+        const pList = $("#pending-list");
+        if(pendingRes.error){
+          pList.innerHTML = `<div class="empty">Could not load approvals: ${esc(pendingRes.error.message)}</div>`;
+        } else if(!pendings.length){
+          pList.innerHTML = '<div class="empty">Nothing waiting on you — all caught up.</div>';
+        } else {
+          pList.innerHTML = pendings.map(p => {
+            const items = (Array.isArray(p.asset_ids)?p.asset_ids.length:0) +
+                          (Array.isArray(p.bulk_items)
+                             ? p.bulk_items.reduce((s,b)=>s+(Number(b.quantity)||0),0)
+                             : 0);
+            const title = `${p.movement_type || 'Batch'} → ${p.to_location || '—'}`;
+            const meta  = [p.submitted_by, String(p.created_at||'').slice(0,16).replace('T',' ')]
+                            .filter(Boolean).join(' · ');
+            return `<div class="pending-item">
+              <div class="pi-main">
+                <div class="pi-title">${esc(title)}</div>
+                <div class="pi-meta">${esc(meta)}</div>
+              </div>
+              <span class="pi-pill">${items} item${items===1?'':'s'}</span>
+            </div>`;
+          }).join("") + (pcount > pendings.length
+            ? `<div class="pi-more">+${pcount - pendings.length} more — <a href="approvals.html">view all</a></div>`
+            : '');
+        }
+
+        // Status pills
+        $("#st").innerHTML=RTV.status.map(s=>{
+          return `<div class="kpi"><b>${esc(s.toUpperCase())}</b><span>${st.get(s)||0}</span></div>`;
+        }).join("");
+
+        if(M.length)$("#sub").textContent="Live operational view · latest movement "+
+          String(M[0].moved_at).slice(0,19).replace("T"," ")+" UTC";
+
+        const act=new Map(),lab=new Map();
+        for(const r of M){const a=(r.activity||"").trim();if(!a)continue;const k=a.toLowerCase();if(!lab.has(k))lab.set(k,a);act.set(k,(act.get(k)||0)+1)}
+
+        const BRAND="#015158",BRAND2="#0a6b73";
+        const bars=(id,title,rows,horiz)=>new Chart($("#"+id),{type:"bar",
+          data:{labels:rows.map(r=>r[0]),datasets:[{data:rows.map(r=>r[1]),backgroundColor:BRAND,hoverBackgroundColor:BRAND2,borderRadius:6,maxBarThickness:34}]},
+          options:{responsive:true,maintainAspectRatio:false,indexAxis:horiz?"y":"x",
+            plugins:{legend:{display:false},title:{display:true,text:title,color:"#0f172a",font:{size:14,weight:"600"},padding:{bottom:14}}},
+            scales:{[horiz?"x":"y"]:{beginAtZero:true,ticks:{precision:0,color:"#64748b"},grid:{color:"#eef2f7"}},
+                    [horiz?"y":"x"]:{ticks:{autoSkip:false,color:"#475569"},grid:{display:false}}}}});
+
+        bars("c1","Assets with the Most Transfers",
+          top(cnt(M.filter(r=>r.movement_type==="TRANSFER"),r=>r.asset_id),10),true);
+        bars("c2","Movements by Activity",
+          [...act].map(([k,v])=>[lab.get(k),v]).sort((a,b)=>b[1]-a[1]),false);
+        bars("c4","Asset Activity per Month",
+          [...cnt(M,r=>r.moved_at&&String(r.moved_at).slice(0,7))]
+            .sort((a,b)=>a[0].localeCompare(b[0])),false);
+        // ---- All locations with search ----
+        const allLoc=[...loc].sort((a,b)=>b[1]-a[1]||String(a[0]).localeCompare(String(b[0])));
+        const maxCount=allLoc.length?allLoc[0][1]:1;
+        const list=$("#loclist"), q=$("#locq");
+        function drawLocations(){
+          const term=q.value.trim().toLowerCase();
+          const rows=allLoc.filter(([name])=>!term||String(name).toLowerCase().includes(term));
+          if(!rows.length){list.innerHTML='<div class="loc-empty">No locations match your search.</div>';return}
+          list.innerHTML=rows.map(([name,n])=>`
+            <div class="loc-row" title="${esc(name)} — ${n} asset(s)">
+              <span class="loc-name">${esc(name)}</span>
+              <span class="loc-bar" style="width:${Math.max(4,Math.round((n/maxCount)*120))}px"></span>
+              <span class="loc-count">${n}</span>
+            </div>`).join("");
+        }
+        q.oninput=drawLocations;
+        drawLocations();
+      }catch(e){say($("#msg"),"Could not load data: "+(e.message||e))}
+    })();
+  </script>
+</body>
+</html>
