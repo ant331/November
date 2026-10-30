@@ -1,38 +1,41 @@
 /* ============================================================
    RTV Inventory Tracker — design system
-   Brand: #2E5299 navy
+   Brand: #008793 teal 
    ============================================================ */
 
 :root {
-  --brand:        #2E5299;
-  --brand-600:    #244585;
-  --brand-400:    #4a6db5;
-  --brand-50:     #eef2fb;
+  --brand: #008793;        
+  --brand-700: #00545C;    
+  --brand-600: #006C76;    
+  --brand-400: #4CABB3;
+  --brand-50: #DCEAE2;     
+  --heading: #00363B;      
+  --accent: #D3ECB2;       
+  --sky: #89C8C9;         
+  --success: #2F6B1A;
+  --success-bg: #E6F3D2;
+  --warning: #d97706;
+  --warning-bg: #fffbeb;
+  --danger: #dc2626;
+  --danger-bg: #fef2f2;
+  --info: #006C76;
+  --info-bg: #E3F1F1;
 
-  --success:      #059669;
-  --success-bg:   #ecfdf5;
-  --warning:      #d97706;
-  --warning-bg:   #fffbeb;
-  --danger:       #dc2626;
-  --danger-bg:    #fef2f2;
-  --info:         #0284c7;
-  --info-bg:      #f0f9ff;
-
-  --bg:           #f6f8fb;
-  --surface:      #ffffff;
-  --surface-2:    #f9fafb;
-  --border:       #e2e8f0;
-  --border-2:     #cbd5e1;
-  --text:         #0f172a;
-  --text-2:       #475569;
-  --muted:        #64748b;
+  --bg: #F7F1E5;           
+  --surface: #FFF9EC;      
+  --surface-2: #F7F1E5;
+  --border: #E0D8C6;
+  --border-2: #CFC6B1;
+  --text: #183032;         
+  --text-2: #3F5A5B;
+  --muted: #5A7173;
 
   --radius:       10px;
   --radius-sm:    6px;
   --radius-lg:    14px;
-  --shadow-sm:    0 1px 2px rgba(15,23,42,.05);
-  --shadow:       0 1px 3px rgba(15,23,42,.06), 0 1px 2px rgba(15,23,42,.04);
-  --shadow-lg:    0 10px 30px rgba(15,23,42,.08), 0 2px 6px rgba(15,23,42,.05);
+  --shadow-sm: 0 1px 2px rgba(0,54,59,.06);
+  --shadow: 0 1px 3px rgba(0,54,59,.08), 0 1px 2px rgba(0,54,59,.05);
+  --shadow-lg: 0 10px 30px rgba(0,54,59,.10), 0 2px 6px rgba(0,54,59,.06);
 
   --nav-h:        60px;
   --font:         -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto,
@@ -56,8 +59,8 @@ body {
 }
 body.center { display: grid; place-items: center; padding: 24px; }
 img { max-width: 100%; height: auto; display: block; }
-a { color: var(--brand); text-decoration: none; transition: color .15s; }
-a:hover { color: var(--brand-600); text-decoration: underline; }
+a { color: var(--brand-600); text-decoration: none; transition: color .15s; }
+a:hover { color: var(--brand-700); text-decoration: underline; }
 button { font: inherit; }
 
 /* ---------- Layout ---------- */
@@ -71,14 +74,14 @@ h1 {
   font-weight: 700;
   letter-spacing: -.015em;
   margin: 0 0 4px;
-  color: var(--text);
+  color: var(--heading);
 }
 h2 {
   font-size: 16px;
   font-weight: 600;
   letter-spacing: -.005em;
   margin: 0 0 14px;
-  color: var(--text);
+  color: var(--heading);
 }
 h2 small { font-weight: 400; color: var(--muted); font-size: 13px; margin-left: 6px; }
 .sub { color: var(--muted); margin: 0 0 22px; font-size: 14px; }
@@ -87,7 +90,7 @@ h2 small { font-weight: 400; color: var(--muted); font-size: 13px; margin-left: 
 #nav {
   position: sticky; top: 0; z-index: 40;
   height: var(--nav-h);
-  background: var(--surface);
+  background: var(--bg);
   border-bottom: 1px solid var(--border);
   box-shadow: var(--shadow-sm);
   backdrop-filter: saturate(160%) blur(6px);
@@ -102,9 +105,9 @@ h2 small { font-weight: 400; color: var(--muted); font-size: 13px; margin-left: 
   padding: 8px 12px; border-radius: var(--radius-sm);
   text-decoration: none; transition: background .15s, color .15s;
 }
-#nav a:hover { background: var(--brand-50); color: var(--brand); text-decoration: none; }
+#nav a:hover { background: var(--brand-50); color: var(--brand-600); text-decoration: none; }
 #nav a.active, #nav a[aria-current="page"] {
-  background: var(--brand-50); color: var(--brand); font-weight: 600;
+  background: var(--brand-50); color: var(--brand-600); font-weight: 600;
 }
 #nav .spacer { flex: 1; }
 #nav .who { color: var(--muted); font-size: 13px; margin-right: 8px; }
@@ -129,10 +132,7 @@ h2 small { font-weight: 400; color: var(--muted); font-size: 13px; margin-left: 
 body.center::before {
   content: "";
   position: fixed; inset: 0; z-index: -1;
-  background:
-    radial-gradient(1200px 600px at 0% 0%, rgba(46,82,153,.10), transparent 60%),
-    radial-gradient(900px 500px at 100% 100%, rgba(46,82,153,.06), transparent 60%),
-    var(--bg);
+  background: linear-gradient(180deg, #89C8C9 0%, #B0D6D3 35%, #CDE1DA 65%, #F7F1E5 100%);
 }
 .card.login {
   width: min(440px, 100%);
@@ -174,9 +174,9 @@ input:hover, select:hover { border-color: var(--border-2); }
 input:focus, select:focus, textarea:focus {
   outline: none;
   border-color: var(--brand);
-  box-shadow: 0 0 0 3px rgba(46,82,153,.15);
+  box-shadow: 0 0 0 3px rgba(0,135,147,.20);
 }
-input::placeholder { color: #94a3b8; }
+input::placeholder { color: #6E8486; }
 input:disabled, select:disabled { background: var(--surface-2); color: var(--muted); cursor: not-allowed; }
 
 /* ---------- Buttons ---------- */
@@ -194,7 +194,7 @@ button:hover, .btn:hover { background: var(--brand-600); }
 button:active, .btn:active { transform: translateY(1px); }
 button:focus-visible, .btn:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(46,82,153,.35);
+  box-shadow: 0 0 0 3px rgba(0,135,147,.40);
 }
 button:disabled { opacity: .55; cursor: not-allowed; }
 button.ghost, .btn.ghost {
@@ -215,7 +215,7 @@ button.danger:hover { background: #b91c1c; }
   border: 1px solid var(--border);
   margin: 0 0 18px;
 }
-.msg.ok  { background: var(--success-bg); color: #065f46; border-color: #a7f3d0; }
+.msg.ok { background: var(--success-bg); color: #2F5D1E; border-color: #B9DC93; }
 .msg.bad { background: var(--danger-bg);  color: #991b1b; border-color: #fecaca; }
 .msg[hidden] { display: none; }
 
@@ -288,23 +288,23 @@ td code, td .mono { font-family: var(--mono); font-size: 12.5px; }
 }
 
 /* Status badges (asset status) */
-.b.s-InUse     { background: #d1fae5; color: #065f46; }
-.b.s-Returned  { background: #e5e7eb; color: #374151; }
-.b.s-Stored    { background: #dbeafe; color: #1e40af; }
+.b.s-InUse { background: #D3ECB2; color: #2F5D1E; }
+.b.s-Returned { background: #EBE5DA; color: #4A5A5A; }
+.b.s-Stored { background: #CDE7E8; color: #005B63; }
 .b.s-InRepair  { background: #fef3c7; color: #92400e; }
 .b.s-Lost      { background: #fee2e2; color: #991b1b; }
 
 /* Movement-type badges */
-.b.t-TRANSFER        { background: #dbeafe; color: #1e40af; }
+.b.t-TRANSFER { background: #CDE7E8; color: #005B63; }
 .b.t-ISSUE           { background: #ede9fe; color: #5b21b6; }
-.b.t-RETURN          { background: #f1f5f9; color: #334155; }
+.b.t-RETURN { background: #EBE5DA; color: #3F5A5B; }
 .b.t-REPAIR          { background: #fef3c7; color: #92400e; }
 .b.t-LOST            { background: #fee2e2; color: #991b1b; }
-.b.t-FOUND           { background: #d1fae5; color: #065f46; }
-.b.t-ACTIVITYUPDATE  { background: #e0f2fe; color: #075985; }
+.b.t-FOUND { background: #D3ECB2; color: #2F5D1E; }
+.b.t-ACTIVITYUPDATE { background: #E3F1F1; color: #00545C; }
 
 /* Ready / not-ready in transfer form */
-.b.ok { background: #d1fae5; color: #065f46; }
+.b.ok { background: #D3ECB2; color: #2F5D1E; }
 .b.no { background: #fee2e2; color: #991b1b; }
 
 /* ---------- KPI cards ---------- */
@@ -435,7 +435,7 @@ button.x:hover { background: var(--danger-bg); color: var(--danger); }
 }
 .skel {
   display: inline-block;
-  background: linear-gradient(90deg, var(--border) 0%, #eef2f7 50%, var(--border) 100%);
+  background: linear-gradient(90deg, var(--border) 0%, #F3EDE0 50%, var(--border) 100%);
   background-size: 200% 100%;
   animation: pulse 1.4s ease-in-out infinite;
   border-radius: 4px;
@@ -457,7 +457,7 @@ button.x:hover { background: var(--danger-bg); color: var(--danger); }
   font-size: 14px;
   animation: toastIn .22s ease-out;
 }
-.toast.ok  { background: #065f46; }
+.toast.ok { background: #2F5D1E; }
 .toast.bad { background: #991b1b; }
 @keyframes toastIn {
   from { opacity: 0; transform: translateY(8px); }
@@ -492,20 +492,19 @@ button.x:hover { background: var(--danger-bg); color: var(--danger); }
    HEADER / NAVIGATION FIXES
    ========================================= */
 
-/* 1. Force the header into a single horizontal row */
 #nav {
   display: flex !important;
   flex-direction: row !important;
   align-items: center !important;
   justify-content: flex-start !important;
   padding: 12px 24px !important;
-  background: #ffffff;
-  border-bottom: 1px solid #e2e8f0;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
   min-height: 64px;
   box-sizing: border-box;
 }
 
-/* 2. Shrink the logo and prevent it from growing */
+/* 2. Shrink the logo */
 #nav img, 
 #nav .brand img {
   max-height: 32px !important;
@@ -519,7 +518,7 @@ button.x:hover { background: var(--danger-bg); color: var(--danger); }
 #nav a:not(.brand), #nav button:not(.signout) {
   font-size: 15px !important; /* Slightly larger for readability */
   font-weight: 500 !important;
-  color: #475569 !important; /* Default grey-blue color */
+  color: var(--text) !important; /* Default text colour */
   text-decoration: none !important;
   background: none !important;
   border: none !important;
@@ -533,15 +532,15 @@ button.x:hover { background: var(--danger-bg); color: var(--danger); }
 
 /* 4. Change color when Hovered */
 #nav a:not(.brand):hover {
-  color: #0f172a !important; /* Darker text */
-  background-color: #f1f5f9 !important; /* Light grey background */
+  color: var(--heading) !important; /* Deep teal text */
+  background-color: #EBE5DA !important; /* Warm beige (site search/hover tone) */
 }
 
 /* 5. Change color when PRESSED / ACTIVE */
 #nav a:not(.brand):active, 
 #nav a.active {
-  color: #2E5299 !important; /* RTV Blue color */
-  background-color: #e0e7ff !important; /* Light blue background */
+  color: var(--brand-600) !important; /* RTV teal */
+  background-color: var(--brand-50) !important; /* Soft teal-cream background */
   font-weight: 600 !important;
 }
 
@@ -559,26 +558,26 @@ button.x:hover { background: var(--danger-bg); color: var(--danger); }
 
 /* 7. Fix the Sign Out button styling */
 #nav .signout, #nav button {
-  background: #fee2e2 !important; /* Light red */
+  background: var(--accent) !important; /* Light green, like the site's Donate pill */
   padding: 8px 16px !important;
   border-radius: 6px !important;
-  color: #ef4444 !important; /* Red text */
+  color: var(--text) !important; /* Dark text */
   font-weight: 600 !important;
-  border: 1px solid #fecaca !important;
+  border: 1px solid #B9DC93 !important;
   margin-left: 24px !important; /* Extra space before Sign Out */
   transition: background 0.2s;
   white-space: nowrap;
 }
 
 #nav .signout:hover, #nav button:hover {
-  background: #fca5a5 !important; /* Darker red on hover */
-  color: #b91c1c !important;
+  background: #C2E297 !important; /* Slightly deeper green on hover */
+  color: var(--heading) !important;
 }
 
 /* 8. Ensure the user email is styled nicely */
 #nav .user-email, #nav span {
   font-size: 13px;
-  color: #64748b;
+  color: var(--muted);
   white-space: nowrap;
   margin-right: 16px;
 }
