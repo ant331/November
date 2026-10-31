@@ -1,0 +1,55 @@
+
+/* =========================================
+   MOBILE HEADER FIX (phones / narrow screens)
+   Put this at the VERY END of css/style.css
+   ========================================= */
+@media (max-width: 720px) {
+  /* Let the header grow to two rows instead of squeezing everything into one */
+  #nav {
+    height: auto !important;
+    min-height: 0 !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    padding: 8px 12px 6px !important;
+    row-gap: 2px;
+  }
+  #nav img { max-height: 28px !important; }
+
+  /* Row 1, right side: Sign out only (the long email text is hidden on phones) */
+  #nav > span.who {
+    order: 2;
+    display: flex;
+    align-items: center;
+    margin: 0 0 0 auto !important;
+    font-size: 0 !important;
+  }
+  #nav > span.who button {
+    font-size: 13px !important;
+    margin: 0 !important;
+    padding: 6px 12px !important;
+  }
+
+  /* Row 2: the page links, full width. They wrap onto a 2nd line if needed,
+     so every page is always visible (nothing hidden behind a swipe). */
+  #nav > nav {
+    order: 3;
+    flex: 0 0 100% !important;
+    width: 100%;
+    min-width: 0;
+    padding: 0 !important;
+    gap: 0 2px !important;
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+  #nav nav > .dd { flex: 0 0 auto; }
+  #nav nav .dd-toggle span { margin: 0 !important; }    /* old rule added 16px after the ▾ */
+  #nav nav > a:not(.brand),
+  #nav nav > .dd > a.dd-toggle {
+    display: block;
+    flex: 0 0 auto;
+    margin: 0 !important;
+    padding: 7px 10px !important;
+    font-size: 14px !important;
+    white-space: nowrap;
+  }
+}
