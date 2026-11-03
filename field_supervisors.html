@@ -159,7 +159,7 @@
     </section>
 
     <section class="card" id="returnCard">
-      <h2>Return to operator <small>(after the activity)</small></h2>
+      <h2>Return to AFS <small>(after the activity)</small></h2>
       <div class="grid">
         <label>District<select id="r_district"></select></label>
         <label class="wide">Note (optional)
@@ -170,7 +170,7 @@
       <p class="sub">Bulk items being returned</p>
       <div class="grid" id="r_bulk"></div>
       <div id="r_res" class="msg">Nothing returned yet.</div>
-      <button id="r_submit" type="button">Return everything to operator</button>
+      <button id="r_submit" type="button">Return everything to AFS</button>
     </section>
   </main>
 
@@ -933,7 +933,7 @@
 
       /* ---------- Return to operator ----------
          Tablets still issued in the district + bulk quantities go back as a RETURN that the
-         district's operator confirms; once approved they are recorded as "Returned". */
+         district's AFS confirms; once approved they are recorded as "Returned". */
       const R_ITEMS = [["BAG","Bags"],["CHARGER","Chargers"],["TAG","Tags"],["EXTENSION","Extensions"]];
       const rPending = new Set();
       let rBusy = false;
