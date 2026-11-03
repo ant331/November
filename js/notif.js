@@ -1,13 +1,4 @@
-// Header bell: how many items are waiting on the signed-in user.
-//   admin            : transfers + item requests waiting for their decision (not their own)
-//   operator         : transfers waiting for their approval (not their own)
-//   field_supervisor : their own batches still waiting for approval
-//   viewer           : nothing
-// Click the bell to open the page where the work is. Exposes window.RTVBell.updateBadge().
-//
-// Load AFTER app.js (it uses `sb` from there). Do NOT paste app.js into this file:
-// re-declaring its top-level consts throws "Identifier '$' has already been declared"
-// and the whole script is skipped.
+
 (() => {
   const BELL_ID = "rtv-bell";
 
@@ -24,15 +15,9 @@
 
     const { data: role, error: roleErr } = await sb.rpc("app_role");
     if (roleErr || !role || role === "viewer") return null;
-
-    if (role === "field_supervisor") {
-      const n = await countOf(head("enumerator_batches").eq("status", "PENDING"));
-      return { n, href: null, label: n + " batch(es) awaiting approval" };
     }
 
     let tq = head("pending_transfers").eq("status", "PENDING").neq("submitted_by", email);
-    // Items an admin added (e.g. new stock) must be approved by an operator of that location,
-    // so an admin cannot act on them - leave them out of the admin's count.
     if (role === "admin") tq = tq.eq("requires_operator_approval", false);
     const transfers = countOf(tq);
 
