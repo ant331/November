@@ -157,6 +157,21 @@
       <div id="res" class="msg">Nothing submitted yet.</div>
       <button id="submit" type="button">Submit for approval</button>
     </section>
+
+    <section class="card" id="returnCard">
+      <h2>Return to operator <small>(after the activity)</small></h2>
+      <div class="grid">
+        <label>District<select id="r_district"></select></label>
+        <label class="wide">Note (optional)
+          <input id="r_reason" maxlength="300" autocomplete="off">
+        </label>
+      </div>
+      <div class="tw"><table id="r_tbl" class="etable"></table></div>
+      <p class="sub">Bulk items being returned</p>
+      <div class="grid" id="r_bulk"></div>
+      <div id="r_res" class="msg">Nothing returned yet.</div>
+      <button id="r_submit" type="button">Return everything to operator</button>
+    </section>
   </main>
 
   <div class="summary-bar" id="bar" style="display:none;">
@@ -913,6 +928,64 @@
           out("Submit failed: " + (e.message || e));
         } finally {
           busy = false; $("#submit").disabled = false;
+        }
+      };
+
+      /* ---------- Return to operator ----------
+         Tablets still issued in the district + bulk quantities go back as a RETURN that the
+         district's operator confirms; once approved they are recorded as "Returned". */
+      const R_ITEMS = [["BAG","Bags"],["CHARGER","Chargers"],["TAG","Tags"],["EXTENSION","Extensions"]];
+      const rPending = new Set();
+      let rBusy = false;
+      $("#r_district").innerHTML = $("#b_district").innerHTML;
+      if ($("#b_district").disabled){ $("#r_district").value = $("#b_district").value; $("#r_district").disabled = true; }
+      $("#r_bulk").innerHTML = R_ITEMS.map(([k,l]) =>
+        `<label>${l}<input type="number" min="0" max="9999" step="1" data-item="${k}" placeholder="0"></label>`).join("");
+
+      function renderReturn(){
+        const d = val("#r_district");
+        const rows = !d ? [] : allAssets.filter(a => a.status === "In Use" && a.current_holder
+          && norm(a.current_location) === norm(d) && !rPending.has(a.asset_id));
+        $("#r_tbl").innerHTML = rows.length
+          ? `<tr><th><input type="checkbox" id="r_selall" checked></th><th>Tablet</th><th>Currently with</th></tr>` +
+            rows.map(a => `<tr><td><input type="checkbox" class="r_cb" value="${esc(a.asset_id)}" checked></td>
+              <td class="em">${esc(a.asset_id)}</td><td>${esc(a.current_holder)}</td></tr>`).join("")
+          : `<tr><td>${d ? "No tablets are currently issued in this district." : "Select a district."}</td></tr>`;
+        const sa = $("#r_selall");
+        if (sa) sa.onchange = () => document.querySelectorAll(".r_cb").forEach(c => c.checked = sa.checked);
+      }
+      $("#r_district").onchange = renderReturn;
+      renderReturn();
+
+      $("#r_submit").onclick = async () => {
+        if (rBusy) return;
+        const rout = (t, ok) => { const r = $("#r_res"); r.className = "msg " + (ok ? "ok" : "bad"); r.textContent = t; };
+        try {
+          const d = val("#r_district");
+          if (!d) throw new Error("Select the district you are returning to.");
+          const ids = [...document.querySelectorAll(".r_cb:checked")].map(c => c.value);
+          const bulk = [...document.querySelectorAll("#r_bulk input")]
+            .map(i => ({ item_type: i.dataset.item, quantity: parseInt(i.value, 10) || 0 }))
+            .filter(b => b.quantity > 0);
+          if (!ids.length && !bulk.length) throw new Error("Select at least one tablet or enter a quantity to return.");
+
+          rBusy = true; $("#r_submit").disabled = true;
+          rout("Submitting return…", true);
+          const { error } = await sb.rpc("submit_supervisor_return", {
+            p_district: d, p_asset_ids: ids, p_bulk_items: bulk,
+            p_activity: "Return after activity", p_reason: val("#r_reason") || null
+          });
+          if (error) throw new Error(error.message);
+
+          ids.forEach(i => rPending.add(i)); renderReturn();
+          document.querySelectorAll("#r_bulk input").forEach(i => i.value = "");
+          $("#r_reason").value = "";
+          rout(`Return submitted: ${ids.length} tablet(s) and ${bulk.length} bulk item type(s) now wait for the operator to confirm.`, true);
+          if (window.RTVBell) window.RTVBell.updateBadge();
+        } catch(e){
+          rout("Return failed: " + (e.message || e));
+        } finally {
+          rBusy = false; $("#r_submit").disabled = false;
         }
       };
 
