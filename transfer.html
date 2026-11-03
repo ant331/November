@@ -15,6 +15,18 @@
     .stock{font-size:11px;color:#64748b;min-height:14px}
     .stock.low{color:#b91c1c;font-weight:600}
     .stock-status{font-size:12px;color:#64748b;margin:8px 0 0}
+    /* Collapsible "send to field supervisor" card */
+    .sup-card{padding:0;overflow:hidden}
+    .sup-card>summary{cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 24px}
+    .sup-card>summary::-webkit-details-marker{display:none}
+    .sup-card>summary h2{margin:0}
+    .sup-card>summary::after{content:"";flex:none;width:9px;height:9px;border-right:2px solid var(--text-2);border-bottom:2px solid var(--text-2);transform:rotate(45deg);transition:transform .15s;margin-right:4px}
+    .sup-card[open]>summary::after{transform:rotate(-135deg) translate(-2px,-2px)}
+    .sup-card[open]>summary{border-bottom:1px solid var(--border)}
+    .sup-body{padding:18px 24px 22px}
+    .sup-tools{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:16px 0 10px}
+    .sup-list{max-height:360px}
+    .sup-list th,.sup-list td{padding:8px 12px}
   </style>
 </head>
 <body>
@@ -73,6 +85,28 @@
         <button id="submitBulk" class="ghost">Submit non-serialized only for approval</button>
       </div>
     </section>
+
+    <details class="card sup-card" id="supCard">
+      <summary><h2>Send tablets to a field supervisor <small id="sup_count"></small></h2></summary>
+      <div class="sup-body">
+        <p class="bulk-note">Tick the tablets to hand over. They become the only tablets that supervisor can see, stay in their district, and are recorded straight away (no approval needed). Only tablets that are not already issued to someone are listed.</p>
+        <div class="grid">
+          <label>Field supervisor<select id="sup"></select></label>
+          <label>Note (optional)<input id="sup_reason" maxlength="300" autocomplete="off"></label>
+        </div>
+        <div class="sup-tools">
+          <input id="sup_q" type="text" placeholder="Search by tablet ID, type or district" style="max-width:340px" autocomplete="off">
+          <span id="sup_n" class="bulk-note" style="margin:0">0 selected</span>
+        </div>
+        <div class="tw sup-list"><table id="sup_tbl"></table></div>
+        <p class="bulk-note" id="sup_more"></p>
+        <div id="sup_res" class="msg">Nothing sent yet.</div>
+        <div class="bulk-actions">
+          <button id="sup_send" type="button" disabled>Send selected to field supervisor</button>
+          <button id="sup_clear" class="ghost" type="button">Clear selection</button>
+        </div>
+      </div>
+    </details>
 
     <section class="card" id="stockCard" hidden>
       <h2>Admin · Add new stock <small>(bags, chargers, tags, extensions)</small></h2>
@@ -401,6 +435,73 @@
           busy=false;$("#addStock").disabled=false;
         }
       };
+
+      /* ---------- Send tablets to a field supervisor (collapsible) ---------- */
+      const supMap=new Map(),supPick=new Set();
+      const supScope=()=>supMap.get(val("#sup"));
+      const sendable=(a,s)=>!["Lost","In Repair"].includes(a.status)&&!(a.current_holder||"").trim()&&(!s||(s.locations||[]).includes(a.current_location));
+
+      function paintSup(){
+        $("#sup_n").textContent=supPick.size+" selected";
+        $("#sup_send").disabled=!supPick.size||busy;
+        const cbs=[...document.querySelectorAll(".sup_cb")],sa=$("#sup_all");
+        if(sa)sa.checked=cbs.length>0&&cbs.every(c=>c.checked);
+      }
+      function renderSup(){
+        const s=supScope(),q=val("#sup_q").toLowerCase();
+        const avail=[...A.values()].filter(a=>sendable(a,s))
+          .sort((x,y)=>x.asset_id.localeCompare(y.asset_id,undefined,{numeric:true}));
+        const ids=new Set(avail.map(a=>a.asset_id));
+        let dropped=0;
+        [...supPick].forEach(i=>{if(!ids.has(i)){supPick.delete(i);dropped++}});
+        const rows=avail.filter(a=>!q||(a.asset_id+" "+(a.asset_type||"")+" "+(a.current_location||"")).toLowerCase().includes(q));
+        const shown=rows.slice(0,300);
+        $("#sup_tbl").innerHTML=shown.length
+          ?'<thead><tr><th style="width:36px"><input type="checkbox" id="sup_all" title="Select all shown"></th><th>Tablet</th><th>Type</th><th>District</th><th>Status</th></tr></thead><tbody>'+
+            shown.map(a=>`<tr><td><input type="checkbox" class="sup_cb" value="${esc(a.asset_id)}" ${supPick.has(a.asset_id)?"checked":""}></td><td><b>${esc(a.asset_id)}</b></td><td>${esc(a.asset_type||"")}</td><td>${esc(a.current_location||"")}</td><td>${esc(a.status||"")}</td></tr>`).join("")+"</tbody>"
+          :`<tbody><tr><td class="empty">${s?"No available tablets in this supervisor's districts.":"No available tablets."}</td></tr></tbody>`;
+        $("#sup_more").textContent=rows.length>shown.length?`Showing the first ${shown.length} of ${rows.length}. Use the search box to narrow the list.`:"";
+        $("#sup_count").textContent="· "+avail.length+" available";
+        paintSup();
+        if(dropped)$("#sup_n").textContent+=` · ${dropped} removed (outside this supervisor's districts)`;
+      }
+
+      try{
+        const fs=await sb.rpc("my_field_supervisors");if(fs.error)throw fs.error;
+        (fs.data||[]).forEach(x=>supMap.set(x.email,x));
+        $("#sup").innerHTML='<option value="">— select —</option>'+(fs.data||[]).map(x=>
+          `<option value="${esc(x.email)}">${esc((x.display_name||x.email)+" · "+(x.locations||[]).join(", "))}</option>`).join("");
+        if(!(fs.data||[]).length)$("#sup_res").textContent="No field supervisors are assigned to your districts yet.";
+      }catch(e){$("#sup_res").className="msg bad";$("#sup_res").textContent="Could not load supervisors: "+(e.message||e)}
+
+      $("#sup").onchange=renderSup;
+      $("#sup_q").oninput=renderSup;
+      $("#sup_clear").onclick=()=>{supPick.clear();renderSup()};
+      $("#sup_tbl").addEventListener("change",e=>{
+        const t=e.target;
+        if(t.id==="sup_all")document.querySelectorAll(".sup_cb").forEach(c=>{c.checked=t.checked;t.checked?supPick.add(c.value):supPick.delete(c.value)});
+        else if(t.classList.contains("sup_cb"))t.checked?supPick.add(t.value):supPick.delete(t.value);
+        else return;
+        paintSup();
+      });
+
+      $("#sup_send").onclick=async()=>{
+        if(busy)return;
+        const so=(t,ok)=>{const r=$("#sup_res");r.className="msg "+(ok?"ok":"bad");r.textContent=t};
+        try{
+          const sup=val("#sup");if(!sup)throw new Error("Choose a field supervisor.");
+          if(!supPick.size)throw new Error("Select at least one tablet.");
+          busy=true;$("#sup_send").disabled=true;so("Sending…",true);
+          const {data,error}=await sb.rpc("send_to_supervisor",{p_supervisor:sup,p_asset_ids:[...supPick],p_reason:val("#sup_reason")||null});
+          if(error)throw new Error(error.message);
+          supPick.clear();$("#sup_reason").value="";
+          await loadAssets();
+          const who=supMap.get(sup);
+          so("Sent "+data.sent+" tablet(s) to "+((who&&who.display_name)||sup)+". They are now the only tablets that supervisor can see.",true);
+        }catch(e){so("Send failed: "+(e.message||e))}
+        finally{busy=false;renderSup()}
+      };
+      renderSup();
 
       render();
       loadStock();
