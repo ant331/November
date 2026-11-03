@@ -15,9 +15,15 @@
 
     const { data: role, error: roleErr } = await sb.rpc("app_role");
     if (roleErr || !role || role === "viewer") return null;
+
+    if (role === "field_supervisor") {
+      const n = await countOf(head("enumerator_batches").eq("status", "PENDING"));
+      return { n, href: null, label: n + " batch(es) awaiting approval" };
     }
 
     let tq = head("pending_transfers").eq("status", "PENDING").neq("submitted_by", email);
+    // Items an admin added (e.g. new stock) must be approved by an operator of that location,
+    // so an admin cannot act on them - leave them out of the admin's count.
     if (role === "admin") tq = tq.eq("requires_operator_approval", false);
     const transfers = countOf(tq);
 
