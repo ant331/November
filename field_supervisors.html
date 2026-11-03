@@ -6,13 +6,6 @@
   <link rel="stylesheet" href="css/style.css">
   <title>Field Supervisor · RTV Inventory Tracker</title>
   <style>
-    /* Upload Box */
-    .upload-box{border:2px dashed #cbd5e1;border-radius:12px;padding:22px;text-align:center;
-      color:#64748b;font-size:13px;background:#f8fafc;cursor:pointer;transition:.15s}
-    .upload-box:hover{border-color:#2E5299;background:#eef2fb;color:#2E5299}
-    .upload-box.has-file{border-style:solid;border-color:#059669;background:#ecfdf5;color:#065f46;text-align:left}
-    .upload-name{font-weight:600;font-size:14px;color:#0f172a}
-    .upload-meta{font-size:12px;color:#64748b;margin-top:2px}
     .req::after{content:" *";color:#dc2626}
 
     /* Table Styling */
@@ -121,8 +114,8 @@
 <body>
   <header id="nav"></header>
   <main>
-    <h1>Assgin Inventory to enumerators</h1>
-    <p class="sub">Assign assests to enumerators and submit signed inventory  document for the whole batch.</p>
+    <h1>Assign inventory to enumerators</h1>
+    <p class="sub">Assign assets to enumerators and submit the batch for approval.</p>
     <div id="msg" class="msg" hidden></div>
 
     <section class="card">
@@ -132,7 +125,7 @@
           <select id="b_district">
             <option value="">— select —</option>
           </select>
-          <small>Filters the tablets available in the Assign dialog.</small>
+          <small id="b_district_hint">Filters the tablets available in the Assign dialog.</small>
         </label>
         <label>Activity<select id="b_act"></select></label>
         <label class="wide">Reason / reference
@@ -159,19 +152,8 @@
       </div>
     </section>
 
-    <section class="card">
-      <h2>Step 3 · Signed hand-over document <small>(required)</small></h2>
-      <div id="drop" class="upload-box" tabindex="0" role="button" aria-label="Upload PDF or JPG">
-        <div id="dropInner">
-          <b>Click to choose a file</b><br>
-          <span>PDF or JPG · max 10 MB · one file for the whole batch</span>
-        </div>
-        <input type="file" id="file" accept=".pdf,.jpg,.jpeg,application/pdf,image/jpeg" hidden>
-      </div>
-    </section>
-
     <section class="card" id="submitCard">
-      <h2>Step 4 · Submit</h2>
+      <h2>Step 3 · Submit</h2>
       <div id="res" class="msg">Nothing submitted yet.</div>
       <button id="submit" type="button">Submit for approval</button>
     </section>
@@ -302,14 +284,34 @@
 
       const $msg = $("#msg"), $res = $("#res");
       const val = s => $(s).value.trim();
-      const MAX_MB = 10;
+
+      /* ---------- District scope ----------
+         Admin: sees everything. Everyone else (supervisors, operators): only their own district(s),
+         taken from the user's location. UX guard only: row-level security is the real protection. */
+      const isAdmin = me.role === "admin";
+      const norm = s => String(s || "").trim().toLowerCase();
+      let myDistricts = [];
+      if (!isAdmin){
+        // A user's districts live in the user_locations table (one row per district).
+        const { data: ul, error: ulErr } = await sb.from("user_locations").select("location").eq("email", String(me.email || "").toLowerCase());
+        if (ulErr){ say($msg, "Could not load your districts: " + ulErr.message); return; }
+        myDistricts = [...new Set((ul || []).map(r => String(r.location || "").trim()).filter(Boolean))];
+      }
+      const inScope = d => isAdmin || myDistricts.some(m => norm(m) === norm(d));
+      const lockedDistrict = (!isAdmin && myDistricts.length === 1) ? myDistricts[0] : "";
+
+      if (!isAdmin && !myDistricts.length){
+        say($msg, "Your account has no district assigned, so there is nothing to show. Ask an admin to set your location.");
+        document.querySelectorAll("main .card").forEach(c => c.style.display = "none");
+        return;
+      }
 
       let enumerators = [];
       let E = new Map();              
       let allAssets = [];
       let assetsError = null;
       let assignments = new Map();    
-      let selectedFile = null, busy = false;
+      let busy = false;
       let modalEid = null, modalSel = new Set(), modalShowAll = false;
       let allEm = new Map();          // every EM code in the table, active or not (value = is active)
 
@@ -347,14 +349,24 @@
           sb.from("locations").select("name").order("name")
         ]);
         if (lRows.error) throw lRows.error;
-        enumerators = eRows.filter(e => e.active !== false);
+        enumerators = eRows.filter(e => e.active !== false && inScope(e.district));
         allEm = new Map(eRows.map(e => [String(e.em || "").toUpperCase(), e.active !== false]));
         
         // Use the robust getEid() function instead of just e.id
         E = new Map(enumerators.map(e => [getEid(e), e]));
         
-        $("#b_district").innerHTML = '<option value="">— select —</option>' +
-          lRows.data.map(loc => `<option value="${esc(loc.name)}">${esc(loc.name)}</option>`).join("");
+        const locNames = lRows.data.map(l => l.name);
+        const distOpts = isAdmin ? locNames
+          : myDistricts.map(d => locNames.find(n => norm(n) === norm(d)) || d);
+        $("#b_district").innerHTML = (lockedDistrict ? "" : '<option value="">— select —</option>') +
+          distOpts.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join("");
+        if (lockedDistrict){
+          $("#b_district").value = distOpts[0];
+          $("#b_district").disabled = true;
+        }
+        if (!isAdmin) $("#b_district_hint").textContent = lockedDistrict
+          ? "Locked to your district. Tablets and enumerators are limited to it."
+          : "Limited to your districts.";
       } catch(e){
         say($msg, "Could not load enumerators/locations: " + (e.message||e));
         return;
@@ -362,6 +374,7 @@
 
       try {
         allAssets = await all("assets",[["asset_id",true]]);
+        if (!isAdmin) allAssets = allAssets.filter(a => inScope(a.current_location));
       } catch(e){
         assetsError = e;
         console.warn("Assets failed to load", e);
@@ -534,7 +547,7 @@
         const q = $("#amodal-search").value.toLowerCase().trim();
         const taken = usedElsewhere();
         const district = $("#b_district").value.trim();
-        const useDistrict = !!district && !modalShowAll;
+        const useDistrict = !!district && (!isAdmin || !modalShowAll);
 
         const visible = allAssets.filter(a => {
           if (taken.has(a.asset_id)) return false;
@@ -548,7 +561,12 @@
         const inDistrict = district ? pool.filter(a => matchesDistrict(a.current_location, district)).length : pool.length;
 
         // Banner
-        if (!district){
+        if (!isAdmin){
+          const label = district || myDistricts.join(", ");
+          banner.innerHTML = `<div class="picker-badge ok">
+            <span> Showing assets in <b>${esc(label)}</b> only (${inDistrict} found).</span>
+          </div>`;
+        } else if (!district){
           banner.innerHTML = `<div class="picker-badge warn">
             <span>⚠ No district selected above — showing <b>all ${inDistrict}</b> assets.</span>
           </div>`;
@@ -648,6 +666,9 @@
       /* --- ADD ENUMERATOR --- */
       $("#e_add").onclick = () => {
         ["#em-code","#em-name","#em-district","#em-phone"].forEach(s => $(s).value = "");
+        $("#em-district").readOnly = !!lockedDistrict;
+        if (lockedDistrict) $("#em-district").value = lockedDistrict;
+        else if (!isAdmin) $("#em-district").value = val("#b_district");
         openModal("emodal");
         $("#em-code").focus();
       };
@@ -657,7 +678,9 @@
         const name = val("#em-name");
         if (!em || !name) return alert("EM code and Name are required.");
 
-        const row = { em, name, district: val("#em-district") || null, telephone: val("#em-phone") || null, active: true };
+        const district = lockedDistrict || val("#em-district");
+        if (!isAdmin && !inScope(district)) return alert("You can only add enumerators in your own district.");
+        const row = { em, name, district: district || null, telephone: val("#em-phone") || null, active: true };
 
         const { data, error } = await sb.from("enumerators").insert(row).select().single();
         if (error){
@@ -674,7 +697,6 @@
       };
 
       /* --- BULK ADD ENUMERATORS (admin only) --- */
-      const isAdmin = me.role === "admin";
       const BULK_MAX = 500;
       let bulkRows = [], bulkBusy = false, bulkTooMany = false;
 
@@ -840,43 +862,13 @@
         };
       }
 
-      /* --- FILE UPLOAD --- */
-      const drop = $("#drop"), fileInput = $("#file");
-      const resetDrop = () => {
-        selectedFile = null; fileInput.value = "";
-        drop.classList.remove("has-file");
-        $("#dropInner").innerHTML = `<b>Click to choose a file</b><br><span>PDF or JPG · max ${MAX_MB} MB</span>`;
-      };
-
-      drop.onclick = e => {
-        if (e.target.closest("#clearFile")){ e.preventDefault(); resetDrop(); return; }
-        fileInput.click();
-      };
-
-      drop.onkeydown = e => {
-        if (e.key === "Enter" || e.key === " "){ e.preventDefault(); fileInput.click(); }
-      };
-
-      fileInput.onchange = () => {
-        const f = fileInput.files[0];
-        if (!f) return;
-        if (f.size > MAX_MB * 1024 * 1024) return say($msg,"File exceeds "+MAX_MB+" MB.");
-
-        selectedFile = f;
-        drop.classList.add("has-file");
-        $("#dropInner").innerHTML = `
-          <div class="upload-name">${esc(f.name)}</div>
-          <div class="upload-meta">${(f.size/1024/1024).toFixed(2)} MB ·
-            <a href="#" id="clearFile" style="color:#dc2626">Remove</a></div>`;
-      };
-
       /* --- SUBMIT --- */
       $("#submit").onclick = async () => {
         if (busy) return;
         const out = (t,ok) => { $res.className = "msg " + (ok ? "ok" : "bad"); $res.textContent = t; };
 
         try {
-          if (!selectedFile) throw new Error("Attach the signed PDF or JPG for the batch.");
+          if (!isAdmin && !val("#b_district")) throw new Error("Select your district for this batch.");
 
           const payload = [];
           for (const [eid, a] of assignments){
@@ -897,33 +889,23 @@
           if (!payload.length) throw new Error("Assign at least one item to an enumerator.");
 
           busy = true; $("#submit").disabled = true;
-          out("Uploading attachment…", true);
-
-          const safeName = selectedFile.name.replace(/[^\w.\-]/g,"_");
-          const path = `${me.email}/${Date.now()}-${safeName}`;
-
-          const up = await sb.storage.from("contractor-attachments").upload(path, selectedFile, {
-            contentType: selectedFile.type || undefined, upsert: false
-          });
-          if (up.error) throw new Error("Upload failed: " + up.error.message);
-
           out("Submitting batch…", true);
 
           const { data, error } = await sb.rpc("submit_enumerator_batch", {
             p_district:         val("#b_district") || null,
             p_activity:         val("#b_act") || null,
             p_reason:           val("#b_reason") || null,
-            p_attachment_path:  path,
-            p_attachment_name:  selectedFile.name,
-            p_attachment_mime:  selectedFile.type || null,
+            p_attachment_path:  null,
+            p_attachment_name:  null,
+            p_attachment_mime:  null,
             p_assignments:      payload
           });
 
           if (error) throw new Error(error.message);
 
           assignments.clear(); renderEnumerators(); updateSummary();
-          ["#b_district","#b_act","#b_reason"].forEach(s => $(s).value = "");
-          resetDrop();
+          ["#b_act","#b_reason"].forEach(s => $(s).value = "");
+          if (!lockedDistrict) $("#b_district").value = "";
 
           out(`Batch ${esc(data.reference)} submitted successfully.`, true);
           if (window.RTVBell) window.RTVBell.updateBadge();
