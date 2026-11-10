@@ -27,6 +27,12 @@
     .sup-tools{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:16px 0 10px}
     .sup-list{max-height:360px}
     .sup-list th,.sup-list td{padding:8px 12px}
+    .upload{display:flex;flex-direction:column;gap:6px;margin:14px 0 4px}
+    .upload label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:#334155}
+    .upload .msg{margin:6px 0 0}
+    .upload a{font-size:12px}
+    .sup-bulk{margin-top:24px;padding-top:18px;border-top:1px solid var(--border)}
+    .sup-bulk h3{margin:0 0 4px;font-size:15px}
   </style>
 </head>
 <body>
@@ -65,6 +71,13 @@
         <datalist id="ids"></datalist>
         <button id="add">+ Add</button>
       </div>
+      <div class="upload">
+        <label>Or upload a list <small>(CSV, TXT or Excel, one Asset ID per row. A column headed "Asset ID" is used if there is one.)</small>
+          <input id="up_file" type="file" accept=".csv,.tsv,.txt,.xlsx,.xls">
+        </label>
+        <a href="data:text/csv;charset=utf-8,Asset%20ID%0A" download="asset-id-template.csv">Download template</a>
+        <div id="up_res" class="msg" hidden></div>
+      </div>
       <div class="tw"><table id="tbl"></table></div>
     </section>
 
@@ -87,7 +100,7 @@
     </section>
 
     <details class="card sup-card" id="supCard">
-      <summary><h2>Send tablets to a field supervisor <small id="sup_count"></small></h2></summary>
+      <summary><h2>Send tablets &amp; bulky items to a field supervisor <small id="sup_count"></small></h2></summary>
       <div class="sup-body">
         <p class="bulk-note">Tick the tablets to hand over. They become the only tablets that supervisor can see, stay in their district, and are recorded straight away (no approval needed). Only tablets that are not already issued to someone are listed.</p>
         <div class="grid">
@@ -104,6 +117,25 @@
         <div class="bulk-actions">
           <button id="sup_send" type="button" disabled>Send selected to field supervisor</button>
           <button id="sup_clear" class="ghost" type="button">Clear selection</button>
+        </div>
+        <div class="sup-bulk">
+          <h3>Bulky items <small>(bags, chargers, tags, extensions)</small></h3>
+          <p class="bulk-note">Uses the field supervisor and note chosen above. Items leave the From location and go to the supervisor's district, limited to what the From location holds.</p>
+          <div class="grid">
+            <label>From location<select id="sb_from"></select></label>
+            <label>Supervisor district<select id="sb_dest"></select></label>
+          </div>
+          <div class="bulk-grid" style="margin-top:12px">
+            <label>Bags<input id="sb_bag" type="number" min="0" step="1" placeholder="0"><span class="stock" data-sb="BAG"></span></label>
+            <label>Chargers<input id="sb_charger" type="number" min="0" step="1" placeholder="0"><span class="stock" data-sb="CHARGER"></span></label>
+            <label>Tags<input id="sb_tag" type="number" min="0" step="1" placeholder="0"><span class="stock" data-sb="TAG"></span></label>
+            <label>Extensions<input id="sb_ext" type="number" min="0" step="1" placeholder="0"><span class="stock" data-sb="EXTENSION"></span></label>
+          </div>
+          <p class="stock-status" id="sb_status"></p>
+          <div id="sb_res" class="msg">Nothing sent yet.</div>
+          <div class="bulk-actions">
+            <button id="sb_send" type="button">Send bulky items to field supervisor</button>
+          </div>
         </div>
       </div>
     </details>
@@ -236,6 +268,79 @@
       $("#add").onclick=add;
       $("#aid").onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();add()}};
       ["#type","#dest","#holder"].forEach(s=>{$(s).oninput=render;$(s).onchange=render});
+
+      /* ---------- Bulk upload: read a file, match IDs against the system, add matches to the list ---------- */
+      const upOut=(h,c)=>{const r=$("#up_res");r.hidden=false;r.className="msg "+(c||"");r.innerHTML=h};
+
+      function parseText(t){
+        const rows=[];let r=[],c="",q=false;
+        for(let i=0;i<t.length;i++){
+          const ch=t[i];
+          if(q){if(ch==='"'){if(t[i+1]==='"'){c+='"';i++}else q=false}else c+=ch}
+          else if(ch==='"')q=true;
+          else if(ch===","||ch===";"||ch==="\t"){r.push(c);c=""}
+          else if(ch==="\n"||ch==="\r"){if(ch==="\r"&&t[i+1]==="\n")i++;r.push(c);rows.push(r);r=[];c=""}
+          else c+=ch;
+        }
+        r.push(c);rows.push(r);
+        return rows;
+      }
+
+      function extractIds(rows){
+        rows=rows.filter(r=>r.some(x=>String(x==null?"":x).trim()));
+        const head=(rows[0]||[]).map(x=>String(x==null?"":x).trim().toLowerCase());
+        const col=head.findIndex(h=>/asset|tablet|serial|^id$/.test(h)&&!A.has(h.toUpperCase()));
+        const data=col>=0?rows.slice(1).map(r=>[r[col]]):rows;
+        return data.flat().flatMap(x=>String(x==null?"":x).toUpperCase().split(/\s+/)).filter(Boolean);
+      }
+
+      function importIds(list){
+        const seen=new Set(),found=[],missing=[];
+        let dup=0,had=0,over=0;
+        for(const id of list){
+          if(seen.has(id)){dup++;continue}
+          seen.add(id);
+          if(!A.has(id)){missing.push(id);continue}
+          if(ids.includes(id)){had++;continue}
+          if(ids.length>=MAX){over++;continue}
+          ids.push(id);found.push(id);
+        }
+        render();
+        let m="<b>"+found.length+"</b> of "+seen.size+" unique ID(s) found in the system and added to the list.";
+        if(found.length){
+          if(val("#type")!=="LOST"&&!val("#dest"))m+=" Choose a destination in Step 2 to finish the Ready check.";
+          else{const r=found.filter(id=>check(id)==="Ready").length;m+=" <b>"+r+"</b> ready"+(r<found.length?", "+(found.length-r)+" need attention (see the Check column).":".")}
+        }
+        if(missing.length)m+="<br><b>"+missing.length+" not found</b> and skipped: "+missing.slice(0,20).map(x=>esc(x)).join(", ")+(missing.length>20?" ...and "+(missing.length-20)+" more":"");
+        const skip=[];
+        if(had)skip.push(had+" already in the list");
+        if(dup)skip.push(dup+" repeated in the file");
+        if(over)skip.push(over+" over the "+MAX+"-per-submission limit (submit this batch, then upload again)");
+        if(skip.length)m+="<br>Skipped: "+skip.join("; ")+".";
+        upOut(m,missing.length?(found.length?"":"bad"):"ok");
+      }
+
+      $("#up_file").onchange=async e=>{
+        const f=e.target.files[0];if(!f)return;
+        try{
+          upOut("Reading "+esc(f.name)+"...");
+          let rows;
+          if(/\.xlsx?$/i.test(f.name)){
+            if(!window.XLSX)await new Promise((ok,no)=>{
+              const sc=document.createElement("script");
+              sc.src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+              sc.onload=ok;sc.onerror=()=>no(new Error("Could not load the Excel reader. Save the sheet as CSV and upload that instead."));
+              document.head.appendChild(sc);
+            });
+            const wb=XLSX.read(await f.arrayBuffer(),{type:"array"});
+            rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:""});
+          }else rows=parseText((await f.text()).replace(/^\uFEFF/,""));
+          const list=extractIds(rows);
+          if(!list.length)throw new Error("No Asset IDs found in that file.");
+          importIds(list);
+        }catch(err){upOut(esc(err.message||String(err)),"bad")}
+        finally{e.target.value=""}
+      };
 
       function readDetails(){
         if(!["admin","operator"].includes(me.role))
@@ -501,6 +606,77 @@
         }catch(e){so("Send failed: "+(e.message||e))}
         finally{busy=false;renderSup()}
       };
+      /* ---------- Bulky items to a field supervisor ---------- */
+      const sbEls={BAG:"#sb_bag",CHARGER:"#sb_charger",TAG:"#sb_tag",EXTENSION:"#sb_ext"};
+      let sbStock={},sbOk=false,sbTok=0;
+      $("#sb_from").innerHTML=opts(myLocs,true);
+      if(myLocs.length===1)$("#sb_from").value=myLocs[0];
+
+      function paintSb(){
+        for(const [type,sel] of Object.entries(sbEls)){
+          const el=document.querySelector('.stock[data-sb="'+type+'"]'),inp=$(sel);
+          if(!sbOk){el.textContent="";el.classList.remove("low");inp.removeAttribute("max");continue}
+          const a=(sbStock[type]||{available:0}).available,q=parseInt(inp.value,10)||0;
+          el.textContent="Available: "+a;el.classList.toggle("low",q>a);inp.max=a;
+        }
+      }
+      async function loadSb(){
+        const tok=++sbTok,from=val("#sb_from");
+        sbStock={};sbOk=false;$("#sb_status").textContent="";
+        if(!from){paintSb();return}
+        const {data,error}=await sb.rpc("bulk_availability",{p_location:from});
+        if(tok!==sbTok)return;
+        if(error){$("#sb_status").textContent="Could not load stock for "+from+": "+error.message;paintSb();return}
+        (data||[]).forEach(x=>{sbStock[x.item_type]=x});sbOk=true;paintSb();
+      }
+      function paintSbDest(){
+        const s=supScope(),locs=(s&&s.locations)||[];
+        $("#sb_dest").innerHTML=opts(locs,locs.length!==1);
+        if(locs.length===1)$("#sb_dest").value=locs[0];
+      }
+      $("#sup").addEventListener("change",paintSbDest);
+      $("#sb_from").onchange=loadSb;
+      Object.values(sbEls).forEach(s=>$(s).addEventListener("input",paintSb));
+
+      $("#sb_send").onclick=async()=>{
+        if(busy)return;
+        const so=(t,ok)=>{const r=$("#sb_res");r.className="msg "+(ok?"ok":"bad");r.textContent=t};
+        try{
+          if(!["admin","operator"].includes(me.role))throw new Error("Your role ("+me.role+") cannot record movements.");
+          const sup=val("#sup");if(!sup)throw new Error("Choose a field supervisor above.");
+          const to=val("#sb_dest");if(!to)throw new Error("Choose the supervisor district receiving the items.");
+          const from=val("#sb_from");if(!from)throw new Error("Choose the From location.");
+          if(from===to)throw new Error("From and destination are the same location.");
+          const items=[];
+          for(const [type,sel] of Object.entries(sbEls)){
+            const raw=$(sel).value.trim();if(!raw)continue;
+            const n=parseInt(raw,10);
+            if(!Number.isFinite(n)||n<0)throw new Error("Invalid quantity for "+type+".");
+            if(n===0)continue;
+            const a=(sbStock[type]||{available:0}).available;
+            if(sbOk&&n>a)throw new Error("Not enough "+type+" at "+from+": "+a+" available, "+n+" requested.");
+            items.push({item_type:type,quantity:n});
+          }
+          if(!items.length)throw new Error("Enter a quantity for at least one bulky item.");
+          busy=true;$("#sb_send").disabled=true;so("Sending...",true);
+          const who=supMap.get(sup),name=(who&&who.display_name)||sup,note=val("#sup_reason");
+          const {data,error}=await sb.rpc("submit_pending_transfer",{
+            p_asset_ids:[],p_bulk_items:items,p_type:"TRANSFER",p_to_location:to,
+            p_to_holder:name,p_activity:null,
+            p_reason:"To field supervisor"+(note?": "+note:""),p_from_location:from
+          });
+          if(error)throw new Error(error.message);
+          Object.values(sbEls).forEach(s=>$(s).value="");
+          const sum=items.map(i=>i.quantity+" "+i.item_type.toLowerCase()).join(", ");
+          so(data.status==="APPROVED"
+            ?"Sent "+sum+" to "+name+" ("+to+")."
+            :"Submitted for approval: "+sum+" to "+name+" ("+to+"). Pending ID "+data.id.slice(0,8)+".",true);
+          if(window.RTVBell)window.RTVBell.updateBadge();
+        }catch(e){so("Send failed: "+(e.message||e))}
+        finally{busy=false;$("#sb_send").disabled=false;loadSb();loadStock()}
+      };
+      paintSbDest();loadSb();
+
       renderSup();
 
       render();
