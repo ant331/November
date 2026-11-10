@@ -72,7 +72,7 @@
         <button id="add">+ Add</button>
       </div>
       <div class="upload">
-        <label>Or upload a list <small>(CSV, TXT or Excel, one Asset ID per row. A column headed "Asset ID" is used if there is one.)</small>
+        <label>Or upload a list <small>(CSV, TXT or Excel, one Asset ID per row.)</small>
           <input id="up_file" type="file" accept=".csv,.tsv,.txt,.xlsx,.xls">
         </label>
         <a href="data:text/csv;charset=utf-8,Asset%20ID%0A" download="asset-id-template.csv">Download template</a>
@@ -120,7 +120,8 @@
         </div>
         <div class="sup-bulk">
           <h3>Bulky items <small>(bags, chargers, tags, extensions)</small></h3>
-          <p class="bulk-note">Uses the field supervisor and note chosen above. Items leave the From location and go to the supervisor's district, limited to what the From location holds.</p>
+          <p class="bulk-note">The field supervisor chosen at the top of this card receives these items, and the note above is used too. Items leave the From location and go to the supervisor's district, limited to what the From location holds.</p>
+          <p class="bulk-note" id="sb_to"></p>
           <div class="grid">
             <label>From location<select id="sb_from"></select></label>
             <label>Supervisor district<select id="sb_dest"></select></label>
@@ -509,7 +510,7 @@
         }
       };
 
-      // Admin only: add brand-new stock (the only way items enter the system)
+      // Admin only: add brand-new stock 
       const stockEls={BAG:"#s_bag",CHARGER:"#s_charger",TAG:"#s_tag",EXTENSION:"#s_ext"};
       $("#addStock").onclick=async()=>{
         if(busy)return;
@@ -631,6 +632,7 @@
       }
       function paintSbDest(){
         const s=supScope(),locs=(s&&s.locations)||[];
+        $("#sb_to").innerHTML=s?"Receiving supervisor: <b>"+esc(s.display_name||s.email)+"</b>":"No supervisor chosen yet. Choose one at the top of this card.";
         $("#sb_dest").innerHTML=opts(locs,locs.length!==1);
         if(locs.length===1)$("#sb_dest").value=locs[0];
       }
@@ -643,7 +645,7 @@
         const so=(t,ok)=>{const r=$("#sb_res");r.className="msg "+(ok?"ok":"bad");r.textContent=t};
         try{
           if(!["admin","operator"].includes(me.role))throw new Error("Your role ("+me.role+") cannot record movements.");
-          const sup=val("#sup");if(!sup)throw new Error("Choose a field supervisor above.");
+          const sup=val("#sup");if(!sup)throw new Error("Choose a field supervisor at the top of this card.");
           const to=val("#sb_dest");if(!to)throw new Error("Choose the supervisor district receiving the items.");
           const from=val("#sb_from");if(!from)throw new Error("Choose the From location.");
           if(from===to)throw new Error("From and destination are the same location.");
@@ -676,6 +678,7 @@
         finally{busy=false;$("#sb_send").disabled=false;loadSb();loadStock()}
       };
       paintSbDest();loadSb();
+      if(!supMap.size)$("#sb_res").textContent="No field supervisors are assigned to your districts yet.";
 
       renderSup();
 
