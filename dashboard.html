@@ -13,7 +13,6 @@
     <p class="sub" id="sub">Live operational view</p>
     <div id="msg" class="msg" hidden></div>
 
-    <!-- ===== Serialized asset KPIs ===== -->
     <section class="kpis">
       <div class="kpi"><b>Total assets</b><span id="k1" class="skel">—</span></div>
       <div class="kpi"><b>Movements recorded</b><span id="k2" class="skel">—</span></div>
@@ -21,7 +20,6 @@
       <div class="kpi"><b>Current locations</b><span id="k4" class="skel">—</span></div>
     </section>
 
-    <!-- ===== Non-serialized KPIs (stock on hand in the districts this user can see) ===== -->
     <p class="bulk-scope" id="bulkScope"></p>
     <section class="kpis" style="margin-top:6px">
       <div class="kpi"><b>Bags</b><span id="k5" class="skel">—</span></div>
@@ -30,7 +28,6 @@
       <div class="kpi"><b>Extensions</b><span id="k8" class="skel">—</span></div>
     </section>
 
-    <!-- ===== Pending approvals (count + preview) ===== -->
     <section class="kpis" style="margin-top:14px">
       <div class="kpi kpi-wide">
         <div class="pending-head">
@@ -44,7 +41,7 @@
 
     <section class="status" id="st"></section>
 
-    <!-- ===== Charts ===== -->
+  
     <section class="charts">
       <div class="card cbox loc-card">
         <div class="loc-head">
@@ -56,6 +53,16 @@
       <div class="card cbox"><canvas id="c1"></canvas></div>
       <div class="card cbox"><canvas id="c2"></canvas></div>
       <div class="card cbox"><canvas id="c4"></canvas></div>
+      
+      <div class="card cbox powerbanks-card">
+        <div class="loc-head">
+          <h3>Power Banks by Location <span id="pb-total" style="font-size:12px;font-weight:400;color:#64748b"></span></h3>
+          <input id="pbq" placeholder="Search location…" autocomplete="off">
+        </div>
+        <div style="flex:1;min-height:250px;position:relative">
+          <canvas id="pbChart"></canvas>
+        </div>
+      </div>
     </section>
   </main>
 
@@ -73,7 +80,6 @@
     .loc-count{min-width:36px;text-align:right;color:#0f172a;font-weight:600}
     .loc-empty{color:#94a3b8;font-size:13px;padding:16px 0;text-align:center}
 
-    /* Pending-approvals card */
     .kpi-wide{grid-column:1/-1}
     .pending-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;width:100%}
     .pending-head b{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#64748b;font-weight:600}
@@ -90,6 +96,9 @@
     .pi-more{font-size:12px;color:#64748b;padding:4px 2px}
     .pi-more a{color:#015158;font-weight:600;text-decoration:none}
     .pi-more a:hover{text-decoration:underline}
+    
+    .powerbanks-card{grid-column:span 2;display:flex;flex-direction:column;min-height:320px}
+    @media (max-width: 1024px) { .powerbanks-card { grid-column: span 1; } }
   </style>
 
   <script src="vendor/chart.umd.js"></script>
@@ -101,8 +110,8 @@
     (async()=>{
       const me = await guard("dashboard");
       try{
-        // Non-serialized items: stock on hand per location, limited to the districts this
-        // user may see (operators: their own districts; admins/viewers: all).
+        const BRAND="#015158", BRAND2="#0a6b73";
+        
         const [A,M,myLocRes,bulkRes] = await Promise.all([
           all("assets",[["asset_id",true]]),
           all("movements",[["moved_at",false],["id",false]]),
@@ -110,30 +119,34 @@
           sb.rpc("bulk_availability")
         ]);
 
-        // Pending transfers visible to me on the Approvals page ("To approve" tab).
         const myEmail = (me.email || "").toLowerCase();
-        const pendingRes = await sb.from("pending_transfers")
+        let pq = sb.from("pending_transfers")
           .select("id,movement_type,to_location,submitted_by,created_at,activity,asset_ids,bulk_items", { count: "exact" })
           .neq("submitted_by", myEmail)
-          .eq("status", "PENDING")
-          .order("created_at", { ascending: false })
-          .limit(8);
+          .eq("status", "PENDING");
+        if(me.role === "admin") pq = pq.eq("requires_operator_approval", false);
+        const pendingRes = await pq.order("created_at", { ascending: false }).limit(8);
 
         const cnt=(arr,f)=>{const m=new Map();for(const x of arr){const k=f(x);if(k)m.set(k,(m.get(k)||0)+1)}return m};
         const top=(m,n)=>[...m].sort((a,b)=>b[1]-a[1]||String(a[0]).localeCompare(String(b[0]))).slice(0,n);
         const loc=cnt(A,a=>a.current_location),st=cnt(A,a=>a.status);
+        // assets holds several serialized types (Tablet, Powerbank, Phone) - never mix them in one card
+        const isType=(a,t)=>String(a.asset_type||"").trim().toLowerCase()===t;
+        const tablets=A.filter(a=>isType(a,"tablet")), banks=A.filter(a=>isType(a,"powerbank"));
+        const tabLoc=cnt(tablets,a=>a.current_location);
 
-        // Remove skeleton shimmer
+       
         ["k1","k2","k3","k4","k5","k6","k7","k8","k9"]
           .forEach(id=>$("#"+id).classList.remove("skel"));
 
-        // Serialized KPIs
+        
         $("#k1").textContent=A.length;
+        $("#k1").title=`${tablets.length} tablets · ${banks.length} power banks · ${A.length-tablets.length-banks.length} other`;
         $("#k2").textContent=M.length;
         $("#k3").textContent=M.filter(r=>r.movement_type==="TRANSFER").length;
         $("#k4").textContent=loc.size;
 
-        // Non-serialized totals = stock on hand in the user's own districts only
+        
         const isOperator = me.role === "operator";
         if(myLocRes.error || bulkRes.error){
           ["k5","k6","k7","k8"].forEach(id=>$("#"+id).textContent="—");
@@ -155,11 +168,71 @@
             ? (mine.size ? "Stock on hand in your districts: "+[...mine].sort().join(", ")
                          : "No districts are assigned to you yet, so there is no stock to show.")
             : "Stock on hand across all districts";
+
+        }
+
+        // ---- Power Banks by Location: serialized assets with asset_type = Powerbank ----
+        {
+          const emptyTextPlugin = {
+            id: 'emptyText',
+            afterDraw(chart) {
+              if (chart.data.datasets.length === 0 || chart.data.datasets[0].data.length === 0) {
+                const { ctx, chartArea: { top, bottom, left, right } } = chart;
+                ctx.save();
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = '#94a3b8';
+                ctx.font = '13px sans-serif';
+                ctx.fillText('No locations match your search.', (left + right) / 2, (top + bottom) / 2);
+                ctx.restore();
+              }
+            }
+          };
+
+          const pbMap = cnt(banks, a=>a.current_location);
+          const pbTotal = banks.length;
+          $("#pb-total").textContent = `· ${pbTotal} total`;
+          const pbData = [...pbMap].sort((a,b)=>b[1]-a[1]);
+
+          const pbChart = new Chart($("#pbChart"), {
+            type: "bar",
+            plugins: [emptyTextPlugin],
+            data: {
+              labels: pbData.map(d => d[0]),
+              datasets: [{
+                data: pbData.map(d => d[1]),
+                backgroundColor: BRAND,
+                hoverBackgroundColor: BRAND2,
+                borderRadius: 6,
+                maxBarThickness: 24
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              indexAxis: "y",
+              plugins: {
+                legend: { display: false }
+              },
+              scales: {
+                x: { beginAtZero: true, ticks: { precision: 0, color: "#64748b" }, grid: { color: "#eef2f7" } },
+                y: { ticks: { autoSkip: false, color: "#475569" }, grid: { display: false } }
+              }
+            }
+          });
+
+          $("#pbq").oninput = function() {
+            const term = this.value.trim().toLowerCase();
+            const filtered = pbData.filter(d => !term || String(d[0]).toLowerCase().includes(term));
+            pbChart.data.labels = filtered.map(d => d[0]);
+            pbChart.data.datasets[0].data = filtered.map(d => d[1]);
+            pbChart.update();
+          };
         }
 
         // ---- Pending approvals: count + preview ----
         const pcount = pendingRes.error ? 0 : (pendingRes.count ?? (pendingRes.data?.length || 0));
-        $("#k9").textContent = pcount;
+        $("#k9").textContent = pendingRes.error ? "—" : pcount;
 
         const pendings = pendingRes.error ? [] : (pendingRes.data || []);
         const pList = $("#pending-list");
@@ -189,8 +262,10 @@
         }
 
         // Status pills
-        $("#st").innerHTML=RTV.status.map(s=>{
-          return `<div class="kpi"><b>${esc(s.toUpperCase())}</b><span>${st.get(s)||0}</span></div>`;
+        const stL=cnt(A,a=>String(a.status||"").trim().toLowerCase()), seenSt=new Set(), stLabels=[];
+        for(const s of [...RTV.status,...st.keys()]){const k=String(s).trim().toLowerCase();if(!seenSt.has(k)){seenSt.add(k);stLabels.push(s)}}
+        $("#st").innerHTML=stLabels.map(s=>{
+          return `<div class="kpi"><b>${esc(String(s).toUpperCase())}</b><span>${stL.get(String(s).trim().toLowerCase())||0}</span></div>`;
         }).join("");
 
         if(M.length)$("#sub").textContent="Live operational view · latest movement "+
@@ -199,7 +274,6 @@
         const act=new Map(),lab=new Map();
         for(const r of M){const a=(r.activity||"").trim();if(!a)continue;const k=a.toLowerCase();if(!lab.has(k))lab.set(k,a);act.set(k,(act.get(k)||0)+1)}
 
-        const BRAND="#015158",BRAND2="#0a6b73";
         const bars=(id,title,rows,horiz)=>new Chart($("#"+id),{type:"bar",
           data:{labels:rows.map(r=>r[0]),datasets:[{data:rows.map(r=>r[1]),backgroundColor:BRAND,hoverBackgroundColor:BRAND2,borderRadius:6,maxBarThickness:34}]},
           options:{responsive:true,maintainAspectRatio:false,indexAxis:horiz?"y":"x",
@@ -214,8 +288,9 @@
         bars("c4","Asset Activity per Month",
           [...cnt(M,r=>r.moved_at&&String(r.moved_at).slice(0,7))]
             .sort((a,b)=>a[0].localeCompare(b[0])),false);
+            
         // ---- All locations with search ----
-        const allLoc=[...loc].sort((a,b)=>b[1]-a[1]||String(a[0]).localeCompare(String(b[0])));
+        const allLoc=[...tabLoc].sort((a,b)=>b[1]-a[1]||String(a[0]).localeCompare(String(b[0])));
         const maxCount=allLoc.length?allLoc[0][1]:1;
         const list=$("#loclist"), q=$("#locq");
         function drawLocations(){
@@ -223,7 +298,7 @@
           const rows=allLoc.filter(([name])=>!term||String(name).toLowerCase().includes(term));
           if(!rows.length){list.innerHTML='<div class="loc-empty">No locations match your search.</div>';return}
           list.innerHTML=rows.map(([name,n])=>`
-            <div class="loc-row" title="${esc(name)} — ${n} asset(s)">
+            <div class="loc-row" title="${esc(name)} — ${n} tablet(s)">
               <span class="loc-name">${esc(name)}</span>
               <span class="loc-bar" style="width:${Math.max(4,Math.round((n/maxCount)*120))}px"></span>
               <span class="loc-count">${n}</span>
