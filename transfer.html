@@ -545,7 +545,7 @@
       /* ---------- Send tablets to a field supervisor (collapsible) ---------- */
       const supMap=new Map(),supPick=new Set();
       const supScope=()=>supMap.get(val("#sup"));
-      const sendable=(a,s)=>!["Lost","In Repair"].includes(a.status)&&!(a.current_holder||"").trim()&&(!s||(s.locations||[]).includes(a.current_location));
+      const sendable=(a,s)=>!["Lost","In Repair"].includes(a.status)&&(a.status==="Returned"||!(a.current_holder||"").trim())&&(!s||(s.locations||[]).includes(a.current_location));
 
       function paintSup(){
         $("#sup_n").textContent=supPick.size+" selected";
