@@ -1,4 +1,3 @@
-
 (() => {
   const BELL_ID = "rtv-bell";
 
@@ -17,8 +16,12 @@
     if (roleErr || !role || role === "viewer") return null;
 
     if (role === "field_supervisor") {
-      const n = await countOf(head("enumerator_batches").eq("status", "PENDING"));
-      return { n, href: null, label: n + " batch(es) awaiting approval" };
+      // Transfers operators sent to this supervisor (row-level security already limits what he can see).
+      const t = await countOf(head("pending_transfers").eq("status", "PENDING").neq("submitted_by", email));
+      const b = await countOf(head("enumerator_batches").eq("status", "PENDING"));
+      const parts = [t && t + " transfer(s)", b && b + " batch(es)"].filter(Boolean);
+      return { n: t + b, href: t ? "approvals.html" : null,
+               label: parts.join(" and ") + " awaiting approval" };
     }
 
     let tq = head("pending_transfers").eq("status", "PENDING").neq("submitted_by", email);
