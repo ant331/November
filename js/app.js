@@ -8,11 +8,12 @@ const say = (el, t, ok) => { el.hidden = !t; el.className = "msg " + (ok ? "ok" 
 //  ROLE_PAGES: a role listed here may open ONLY these pages.
 //  PAGE_ROLES: a page listed here may be opened ONLY by these roles.
 //  ROLE_HOME : where a role is sent when it opens a page it is not allowed to see.
-const ROLE_PAGES = { field_supervisor: ["field_supervisors"] };
+const ROLE_PAGES = { field_supervisor: ["field_supervisors", "approvals"] };
 const PAGE_ROLES = {
   field_supervisors: ["admin", "operator", "field_supervisor"],
-  request:  ["admin", "operator"],   // operators ask for items
-  requests: ["admin", "operator"]    // admins approve / reject, operators follow their districts
+  approvals: ["admin", "operator", "field_supervisor"],   
+  request:  ["admin", "operator"],  
+  requests: ["admin", "operator"]    
 };
 const ROLE_HOME  = { field_supervisor: "field_supervisors.html" };
 const NAV = [
@@ -20,6 +21,7 @@ const NAV = [
   ["Transfers", [["transfer", "Transfer Form"], ["request", "Request Items"], ["requests", "Item Requests"]]],
   ["movements", "Movement Log"],
   ["assets", "Assets"],
+  ["approvals", "Approvals"],
   ["field_supervisors", "Asset Allocation"]
 ];
 
