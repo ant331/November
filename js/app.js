@@ -8,7 +8,7 @@ const say = (el, t, ok) => { el.hidden = !t; el.className = "msg " + (ok ? "ok" 
 //  ROLE_PAGES: a role listed here may open ONLY these pages.
 //  PAGE_ROLES: a page listed here may be opened ONLY by these roles.
 //  ROLE_HOME : where a role is sent when it opens a page it is not allowed to see.
-const ROLE_PAGES = { field_supervisor: ["field_supervisors", "approvals","assets"] };
+const ROLE_PAGES = { field_supervisor: ["field_supervisors", "approvals", "assets"] };
 const PAGE_ROLES = {
   field_supervisors: ["admin", "operator", "field_supervisor"],
   approvals: ["admin", "operator", "field_supervisor"],   
