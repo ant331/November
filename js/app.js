@@ -13,7 +13,8 @@ const PAGE_ROLES = {
   field_supervisors: ["admin", "operator", "field_supervisor"],
   approvals: ["admin", "operator", "field_supervisor"],   
   request:  ["admin", "operator"],  
-  requests: ["admin", "operator"]    
+  requests: ["admin", "operator"],
+  assets:   ["admin", "operator", "field_supervisor"] 
 };
 const ROLE_HOME  = { field_supervisor: "field_supervisors.html" };
 const NAV = [
