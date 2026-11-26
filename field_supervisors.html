@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/collapsible-card.css">
   <title>Field Supervisor · RTV Inventory Tracker</title>
   <style>
     .req::after{content:" *";color:#dc2626}
@@ -158,8 +159,30 @@
       <button id="submit" type="button">Submit for approval</button>
     </section>
 
-    <section class="card" id="returnCard">
-      <h2>Return to AFS <small>(after the activity)</small></h2>
+    <details class="card sup-card" id="collectCard">
+      <summary><h2>Collect from enumerators <small>(after the activity)</small> <small id="c_count"></small></h2></summary>
+      <div class="sup-body">
+      <p class="sub" style="margin:-6px 0 12px;font-size:13px">
+        Tick the tablets an enumerator has handed back and enter the bags, chargers, tags or extensions they returned.
+        They come back into your custody straight away. Then use <b>Return to AFS</b> below to send them on.
+      </p>
+      <div class="grid">
+        <label>District<select id="c_district"></select></label>
+        <label class="wide">Note (optional)
+          <input id="c_reason" maxlength="300" autocomplete="off">
+        </label>
+      </div>
+      <div class="tw"><table id="c_tbl" class="etable"></table></div>
+      <p class="sub">Bulky items still with enumerators</p>
+      <div class="tw"><table id="c_bulk" class="etable"></table></div>
+      <div id="c_res" class="msg">Nothing collected yet.</div>
+      <button id="c_submit" type="button">Collect selected</button>
+      </div>
+    </details>
+
+    <details class="card sup-card" id="returnCard">
+      <summary><h2>Return to AFS <small>(after the activity)</small> <small id="r_count"></small></h2></summary>
+      <div class="sup-body">
       <div class="grid">
         <label>District<select id="r_district"></select></label>
         <label class="wide">Note (optional)
@@ -167,11 +190,13 @@
         </label>
       </div>
       <div class="tw"><table id="r_tbl" class="etable"></table></div>
+      <p class="sub" id="r_hint" style="margin:8px 0 0"></p>
       <p class="sub">Bulk items being returned</p>
       <div class="grid" id="r_bulk"></div>
       <div id="r_res" class="msg">Nothing returned yet.</div>
       <button id="r_submit" type="button">Return everything to AFS</button>
-    </section>
+      </div>
+    </details>
   </main>
 
   <div class="summary-bar" id="bar" style="display:none;">
@@ -931,9 +956,7 @@
         }
       };
 
-      /* ---------- Return to operator ----------
-         Tablets still issued in the district + bulk quantities go back as a RETURN that the
-         district's AFS confirms; once approved they are recorded as "Returned". */
+      /* ---------- Return to operator ---------- */
       const R_ITEMS = [["BAG","Bags"],["CHARGER","Chargers"],["TAG","Tags"],["EXTENSION","Extensions"]];
       const rPending = new Set();
       let rBusy = false;
@@ -944,13 +967,19 @@
 
       function renderReturn(){
         const d = val("#r_district");
+        // Tablets in the supervisor's own hands. Ones still with an enumerator are collected first (card above).
         const rows = !d ? [] : allAssets.filter(a => a.status === "In Use" && a.current_holder
-          && norm(a.current_location) === norm(d) && !rPending.has(a.asset_id));
+          && norm(a.current_location) === norm(d) && !rPending.has(a.asset_id)
+          && (isAdmin || norm(a.current_holder) === norm(me.email)));
+        $("#r_count").textContent = rows.length ? "· " + rows.length + " in hand" : "";
+        const away = d && !isAdmin ? withEnum(d).length : 0;
+        $("#r_hint").textContent = away
+          ? `${away} tablet${away === 1 ? " is" : "s are"} still with enumerators. Collect them in the card above first.` : "";
         $("#r_tbl").innerHTML = rows.length
           ? `<tr><th><input type="checkbox" id="r_selall" checked></th><th>Tablet</th><th>Currently with</th></tr>` +
             rows.map(a => `<tr><td><input type="checkbox" class="r_cb" value="${esc(a.asset_id)}" checked></td>
               <td class="em">${esc(a.asset_id)}</td><td>${esc(a.current_holder)}</td></tr>`).join("")
-          : `<tr><td>${d ? "No tablets are currently issued in this district." : "Select a district."}</td></tr>`;
+          : `<tr><td>${d ? "You have no tablets in hand in this district." : "Select a district."}</td></tr>`;
         const sa = $("#r_selall");
         if (sa) sa.onchange = () => document.querySelectorAll(".r_cb").forEach(c => c.checked = sa.checked);
       }
@@ -988,6 +1017,139 @@
           rBusy = false; $("#r_submit").disabled = false;
         }
       };
+
+      /* ---------- Collect from enumerators ---------- */
+      const ITEM_LABEL = Object.fromEntries(R_ITEMS);
+      const cSel = new Set();
+      let cBusy = false;
+
+      // Tablets in this district that are with an enumerator ("EM001 · Name"), not with the supervisor.
+      function withEnum(d){
+        return allAssets.filter(a => a.status === "In Use" && a.current_holder
+          && String(a.current_holder).includes(" · ") && norm(a.current_holder) !== norm(me.email)
+          && norm(a.current_location) === norm(d) && !rPending.has(a.asset_id));
+      }
+
+      if (isAdmin) $("#collectCard").style.display = "none";   // collecting is a supervisor action
+      $("#c_district").innerHTML = $("#b_district").innerHTML;
+      if ($("#b_district").disabled){ $("#c_district").value = $("#b_district").value; $("#c_district").disabled = true; }
+
+      function collectCount(){
+        const bulk = [...document.querySelectorAll("#c_bulk input[data-h]")].reduce((s, i) => s + (parseInt(i.value, 10) || 0), 0);
+        const t = cSel.size, parts = [];
+        if (t) parts.push(t + " tablet" + (t === 1 ? "" : "s"));
+        if (bulk) parts.push(bulk + " bulky");
+        $("#c_submit").textContent = parts.length ? "Collect " + parts.join(" + ") : "Collect selected";
+        $("#c_submit").disabled = cBusy;
+      }
+
+      function syncCollectBoxes(rows){
+        document.querySelectorAll(".c_grp").forEach(g => {
+          const mine = rows.filter(a => a.current_holder === g.dataset.h);
+          g.checked = mine.length > 0 && mine.every(a => cSel.has(a.asset_id));
+        });
+        const all = $("#c_all");
+        if (all) all.checked = rows.length > 0 && rows.every(a => cSel.has(a.asset_id));
+        collectCount();
+      }
+
+      function renderCollect(){
+        const d = val("#c_district");
+        const rows = !d ? [] : withEnum(d).sort((x, y) =>
+          String(x.current_holder).localeCompare(String(y.current_holder)) ||
+          x.asset_id.localeCompare(y.asset_id, undefined, { numeric: true }));
+        [...cSel].forEach(id => { if (!rows.some(a => a.asset_id === id)) cSel.delete(id); });
+        $("#c_count").textContent = rows.length ? "· " + rows.length + " with enumerators" : "";
+        if (!rows.length){
+          $("#c_tbl").innerHTML = `<tr><td>${d ? "No tablets are with enumerators in this district." : "Select a district."}</td></tr>`;
+          collectCount(); return;
+        }
+        let html = `<tr><th><input type="checkbox" id="c_all" title="Select all"></th><th>Tablet</th><th>With enumerator</th></tr>`, last = null;
+        for (const a of rows){
+          if (a.current_holder !== last){
+            last = a.current_holder;
+            const n = rows.filter(x => x.current_holder === last).length;
+            html += `<tr><td><input type="checkbox" class="c_grp" data-h="${esc(last)}" title="Select this enumerator's tablets"></td>
+              <td colspan="2"><b>${esc(last)}</b> · ${n} tablet${n === 1 ? "" : "s"}</td></tr>`;
+          }
+          html += `<tr><td><input type="checkbox" class="c_cb" value="${esc(a.asset_id)}" ${cSel.has(a.asset_id) ? "checked" : ""}></td>
+            <td class="em">${esc(a.asset_id)}</td><td>${esc(a.current_holder)}</td></tr>`;
+        }
+        $("#c_tbl").innerHTML = html;
+        syncCollectBoxes(rows);
+      }
+
+      $("#c_tbl").addEventListener("change", ev => {
+        const t = ev.target, d = val("#c_district"), rows = d ? withEnum(d) : [];
+        if (t.id === "c_all") rows.forEach(a => t.checked ? cSel.add(a.asset_id) : cSel.delete(a.asset_id));
+        else if (t.classList.contains("c_grp")) rows.filter(a => a.current_holder === t.dataset.h).forEach(a => t.checked ? cSel.add(a.asset_id) : cSel.delete(a.asset_id));
+        else if (t.classList.contains("c_cb")) t.checked ? cSel.add(t.value) : cSel.delete(t.value);
+        else return;
+        document.querySelectorAll(".c_cb").forEach(c => c.checked = cSel.has(c.value));
+        syncCollectBoxes(rows);
+      });
+
+      async function loadCBulk(){
+        const d = val("#c_district");
+        if (!d){ $("#c_bulk").innerHTML = "<tr><td>Select a district.</td></tr>"; collectCount(); return; }
+        const { data, error } = await sb.rpc("enumerator_bulk_holdings", { p_district: d });
+        if (val("#c_district") !== d) return;             // district changed while loading
+        if (error){ $("#c_bulk").innerHTML = `<tr><td>Could not load: ${esc(error.message)}</td></tr>`; return; }
+        const rows = data || [];
+        $("#c_bulk").innerHTML = rows.length
+          ? `<tr><th>Enumerator</th><th>Item</th><th>Holding</th><th>Collect now</th></tr>` +
+            rows.map(r => `<tr><td>${esc(r.holder_name)}</td><td>${esc(ITEM_LABEL[r.item] || r.item)}</td><td>${r.held}</td>
+              <td><input type="number" min="0" max="${r.held}" step="1" placeholder="0" style="width:90px"
+                   data-h="${esc(r.holder_name)}" data-i="${esc(r.item)}"></td></tr>`).join("")
+          : "<tr><td>No bulky items are with enumerators in this district.</td></tr>";
+        document.querySelectorAll("#c_bulk input").forEach(i => i.oninput = collectCount);
+        collectCount();
+      }
+
+      async function reloadAssets(){
+        try {
+          allAssets = await all("assets", [["asset_id", true]]);
+          if (!isAdmin) allAssets = allAssets.filter(a => inScope(a.current_location));
+          assetsError = null;
+        } catch(e){ assetsError = e; }
+      }
+
+      $("#c_district").onchange = () => { cSel.clear(); renderCollect(); loadCBulk(); };
+
+      $("#c_submit").onclick = async () => {
+        if (cBusy) return;
+        const cout = (t, ok) => { const r = $("#c_res"); r.className = "msg " + (ok ? "ok" : "bad"); r.textContent = t; };
+        try {
+          const d = val("#c_district");
+          if (!d) throw new Error("Select the district.");
+          const ids = [...cSel];
+          const inputs = [...document.querySelectorAll("#c_bulk input[data-h]")];
+          const bulk = inputs.map(i => ({ holder: i.dataset.h, item_type: i.dataset.i, quantity: parseInt(i.value, 10) || 0, max: parseInt(i.max, 10) }))
+            .filter(b => b.quantity > 0);
+          if (!ids.length && !bulk.length) throw new Error("Tick the tablets or enter the quantities being collected.");
+          const over = bulk.find(b => b.quantity > b.max);
+          if (over) throw new Error(`${over.holder} only holds ${over.max} ${(ITEM_LABEL[over.item_type] || over.item_type).toLowerCase()}.`);
+
+          cBusy = true; collectCount(); cout("Collecting…", true);
+          const { data, error } = await sb.rpc("collect_from_enumerator", {
+            p_district: d, p_asset_ids: ids,
+            p_bulk: bulk.map(({ holder, item_type, quantity }) => ({ holder, item_type, quantity })),
+            p_reason: val("#c_reason") || null
+          });
+          if (error) throw new Error(error.message);
+
+          cSel.clear(); $("#c_reason").value = "";
+          await reloadAssets();
+          renderCollect(); renderReturn(); await loadCBulk();
+          cout(`Collected ${data.tablets} tablet(s) and ${data.bulk_lines} bulky line(s). They are now with you. Use Return to AFS below to send them back.`, true);
+        } catch(e){
+          cout("Collect failed: " + (e.message || e));
+        } finally {
+          cBusy = false; collectCount();
+        }
+      };
+
+      renderCollect(); loadCBulk();
 
       renderEnumerators();
       updateSummary();
