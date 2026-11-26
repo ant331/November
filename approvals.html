@@ -6,50 +6,52 @@
   <link rel="stylesheet" href="css/style.css">
   <title>Approvals · RTV Inventory Tracker</title>
   <style>
-    /* Inline styles for the approvals page specific layout */
     .tabs{display:flex;gap:4px;background:#eef2f7;padding:4px;border-radius:10px}
     .tab{background:transparent;border:0;padding:6px 14px;border-radius:8px;cursor:pointer;
       font-size:13px;color:#334155;font-weight:500}
     .tab.active{background:#fff;color:#0f172a;box-shadow:0 1px 3px rgba(15,23,42,.08)}
-    .approvals-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px;margin-top:14px}
-    .approval{padding:14px}
-    .approval-head{display:flex;justify-content:space-between;align-items:center;gap:8px;
-      flex-wrap:wrap;margin-bottom:10px;font-size:14px}
-    .approval-meta{font-size:11px;color:#64748b}
-    .approval-body{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:10px}
-    .approval-body small{font-size:11px;color:#64748b;display:block}
-    .approval-items{margin-bottom:10px}
-    .approval-items > div{margin-bottom:8px}
-    .approval-items small{font-size:11px;color:#64748b;display:block;margin-bottom:3px}
-    
-    /* Attachment Block */
-    .approval-attachment {
-      display: flex; align-items: center; justify-content: space-between;
-      background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
-      padding: 10px 12px; margin-bottom: 12px;
-    }
-    .approval-attachment .att-info {
-      display: flex; align-items: center; gap: 8px; font-size: 13px; color: #334155; font-weight: 500;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    }
-    .approval-attachment button {
-      padding: 6px 12px; font-size: 12px; flex-shrink: 0; margin-left: 10px;
-    }
-    
-    .approval-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding-top:8px;border-top:1px solid #eef2f7}
-    .approval-actions input{flex:1;min-width:140px;padding:8px 10px;border:1px solid #d5dbe6;
-      border-radius:8px;font-size:13px}
-    .approval-decision{font-size:12px;color:#64748b;padding-top:8px;border-top:1px solid #eef2f7}
-    .pill{display:inline-block;background:#eef2f7;color:#334155;font-size:11px;
-      padding:2px 8px;border-radius:999px;margin:1px 3px 1px 0}
     .b.warn{background:#fef3c7;color:#92400e}
+
+    /* One row per tablet */
+    #atbl td{vertical-align:middle}
+    #atbl th.chk,#atbl td.chk{width:40px;text-align:center}
+    #atbl input[type=checkbox]{width:16px;height:16px;cursor:pointer}
+    #atbl input[type=checkbox]:disabled{cursor:not-allowed;opacity:.35}
+    #atbl tr.picked td{background:var(--brand-50,#e8f3f4)}
+    #atbl tr.flash td{background:#fff7d6;transition:background .6s}
+    #atbl .tid{font-weight:600;font-size:13.5px}
+    #atbl .meta{display:block;font-size:11.5px;color:#64748b;line-height:1.35}
+    #atbl .pill{display:inline-block;background:#eef2f7;color:#334155;font-size:11.5px;
+      padding:2px 9px;border-radius:999px;margin:1px 3px 1px 0}
+    #atbl .acts{display:flex;gap:6px;white-space:nowrap}
+    #atbl .acts button{padding:4px 10px;font-size:12px}
+    #atbl .dl{padding:3px 8px;font-size:11.5px}
+    #atbl .grp td{border-top:2px solid #cbd5e1}
+    .wait{font-size:12px;color:#92400e}
+    .quick{font-size:12px;color:#64748b}
+    .quick a{cursor:pointer;color:#015158;font-weight:600;margin-left:8px}
+    .resline{margin:2px 0;font-size:13px}
+    #q{max-width:260px}
+
+    /* Action bar: uses the site's own button/input styles and brand teal */
+    .bulkbar{position:fixed;left:0;right:0;bottom:0;background:#fff;color:var(--text,#0f172a);padding:12px 24px;
+      display:none;align-items:center;gap:12px;flex-wrap:wrap;z-index:60;
+      border-top:3px solid var(--brand-600,#015158);box-shadow:0 -6px 20px rgba(15,23,42,.12)}
+    .bulkbar.on{display:flex}
+    .bulkbar .cnt{font-size:14px;white-space:nowrap}
+    .bulkbar .cnt b{color:var(--brand-600,#015158);font-size:16px;font-variant-numeric:tabular-nums}
+    .bulkbar input{flex:1;min-width:200px;margin:0}
+    .bulkbar button.reject{color:#b42318;border-color:#e4a9a3}
+    .bulkbar button.reject:hover{background:#fdf0ee}
+    .bulkbar button:disabled{opacity:.5;cursor:not-allowed}
+    body.has-bulk main{padding-bottom:110px}
   </style>
 </head>
 <body>
   <header id="nav"></header>
   <main>
     <h1>Approvals</h1>
-    <p class="sub">Approve incoming transfers for your assigned districts. Approving writes the movement to the asset log.</p>
+    <p class="sub">Tick the ones to approve and click <b>Approve selected</b>, then tick others and <b>Reject selected</b> if you have to. Tablets you leave alone stay pending.</p>
     <div id="msg" class="msg" hidden></div>
 
     <div class="bar">
@@ -63,11 +65,21 @@
         <option value="REJECTED">Rejected</option>
         <option value="">All</option>
       </select>
+      <input id="q" placeholder="Search tablet, district or sender…" autocomplete="off">
       <button class="ghost" id="refresh">↻ Refresh</button>
+      <span class="quick" id="quick"></span>
     </div>
 
-    <div id="list" class="approvals-list"></div>
+    <div class="tw"><table id="atbl"></table></div>
   </main>
+
+  <div class="bulkbar" id="bulkbar">
+    <span class="cnt"><b id="bb-n">0</b> selected</span>
+    <input id="bb-note" maxlength="300" placeholder="Note for this decision (optional)" autocomplete="off">
+    <button id="bb-approve" type="button">Approve selected</button>
+    <button class="ghost reject" id="bb-reject" type="button">Reject selected</button>
+    <button class="ghost" id="bb-clear" type="button">Clear</button>
+  </div>
 
   <script src="vendor/supabase.js"></script>
   <script src="js/config.js"></script>
@@ -76,36 +88,35 @@
   <script>
     (async()=>{
       const me = await guard("approvals");
-      const list = $("#list"), msg = $("#msg");
-      let tab = "approve";
-      let items = [];
-
+      const tbl = $("#atbl"), msg = $("#msg");
       const email = (me.email || "").toLowerCase();
+      let tab = "approve";
+      let items = [];            // pending_transfers rows
+      let flat = [];             // one entry per tablet (and one per transfer's non-serialized items)
+      const picked = new Set();  // keys: "<transferId>|<assetId>" or "<transferId>|#bulk"
+      let busy = false, lastIdx = -1;
+
+      const when = v => String(v || "").slice(0,16).replace("T"," ");
+      const label = r => r.movement_type === "STOCK_IN" ? "Add stock" : (r.movement_type || "Batch Sign-out");
+
+      // An admin cannot decide what only an operator of the district may approve.
+      const decidable = r => tab === "approve" && r.status === "PENDING" &&
+        !(r.requires_operator_approval && me.role === "admin");
 
       async function load(){
         const st = $("#f_status").value;
-        
         let q = sb.from("pending_transfers").select("*").order("created_at",{ascending:false});
-        
-        if (tab === "approve") {
-          q = q.neq("submitted_by", email); 
-        } else {
-          q = q.eq("submitted_by", email);
-        }
-        
+        q = tab === "approve" ? q.neq("submitted_by", email) : q.eq("submitted_by", email);
         if (st) q = q.eq("status", st);
-        
+
         const { data, error } = await q;
-        if (error){ 
-          say(msg, "Could not load: " + error.message); 
-          return; 
-        }
+        if (error){ say(msg, "Could not load: " + error.message); return; }
         items = data || [];
 
-        // Attachments live on enumerator_batches (storage bucket "contractor-attachments"),
-        // linked to a transfer through enumerator_batch_assignments.pending_transfer_id.
+        // Attachments: enumerator_batches (private bucket) via enumerator_batch_assignments.pending_transfer_id.
+        // A record split off by a partial decision points back to its source through parent_id.
         if (items.length){
-          const ids = items.map(r => r.id);
+          const ids = [...new Set(items.flatMap(r => [r.id, r.parent_id]).filter(Boolean))];
           const { data: asg, error: aerr } = await sb
             .from("enumerator_batch_assignments")
             .select("pending_transfer_id, enumerator_batches(reference, attachment_path, attachment_name)")
@@ -113,185 +124,216 @@
           if (aerr){
             say(msg, "Attachments could not be loaded: " + aerr.message);
           } else {
-            const byTransfer = {};
+            const by = {};
             (asg || []).forEach(a => {
               const b = a.enumerator_batches;
-              if (b && b.attachment_path && !byTransfer[a.pending_transfer_id]) byTransfer[a.pending_transfer_id] = b;
+              if (b && b.attachment_path && !by[a.pending_transfer_id]) by[a.pending_transfer_id] = b;
             });
             items.forEach(r => {
-              const b = byTransfer[r.id];
-              if (b){
-                r.attachment_path = b.attachment_path;
-                r.attachment_name = b.attachment_name;
-                r.batch_reference = b.reference;
-              }
+              const b = by[r.id] || by[r.parent_id];
+              if (b){ r.attachment_path = b.attachment_path; r.attachment_name = b.attachment_name; }
             });
           }
         }
+
+        flat = [];
+        items.forEach(r => {
+          const ids = r.asset_ids || [], bulk = r.bulk_items || [];
+          ids.forEach((a, i) => flat.push({ key: r.id + "|" + a, r, asset: a, first: i === 0 }));
+          if (bulk.length) flat.push({ key: r.id + "|#bulk", r, bulk, first: !ids.length });
+        });
+        const live = new Set(flat.filter(f => decidable(f.r)).map(f => f.key));
+        [...picked].forEach(k => { if (!live.has(k)) picked.delete(k); });
         render();
       }
 
-      function pills(arr, fmt){
-        if (!arr || !arr.length) return "";
-        return arr.map(fmt).join(" ");
-      }
+      const visible = () => {
+        const t = $("#q").value.trim().toLowerCase();
+        if (!t) return flat;
+        return flat.filter(f => [f.asset || "", (f.bulk || []).map(b => b.item_type).join(" "), f.r.to_location,
+          f.r.from_location, f.r.submitted_by, f.r.reason, label(f.r)].join(" ").toLowerCase().includes(t));
+      };
 
       function render(){
-        if (!items.length){
-          list.innerHTML = '<div class="empty" style="grid-column:1/-1">No transfers match this filter.</div>';
-          return;
+        const canPick = tab === "approve";
+        const rows = visible();
+        const head = `<thead><tr>${canPick ? '<th class="chk"><input type="checkbox" id="selall" title="Select all shown"></th>' : ""}
+          <th>Tablet / items</th><th>Transfer</th><th>Submitted by</th><th>Reason</th><th>File</th><th>Status</th>
+          <th>${canPick ? "" : "Decision"}</th></tr></thead>`;
+        if (!rows.length){
+          tbl.innerHTML = head + `<tbody><tr><td class="empty" colspan="8">No tablets match this filter.</td></tr></tbody>`;
+          sync(); return;
         }
-        
-        list.innerHTML = items.map(r => {
-          const canDecide = tab === "approve" && r.status === "PENDING";
-          // Items submitted by an admin (e.g. Add stock) can only be approved by an operator of the location.
-          const needsOperator = !!r.requires_operator_approval && me.role === "admin";
-          const badgeCls = r.status === "APPROVED" ? "ok"
-                        : r.status === "REJECTED" ? "no"
-                        : "warn";
-          
-          // Robust check for attachment paths and names
-          const attPath = r.attachment_path || r.attachment_url || r.file_path;
-          const attName = r.attachment_name || r.file_name || (attPath ? attPath.split('/').pop() : "Signed Document");
-          const hasAttachment = !!attPath;
-          
-          return `
-          <div class="card approval">
-            <div class="approval-head">
-              <div>
-                <b>${esc(r.movement_type === 'STOCK_IN' ? 'Add stock' : (r.movement_type || 'Batch Sign-out'))}</b> → ${esc(r.to_location || "—")}
-                <span class="b ${badgeCls}">${esc(r.status)}</span>
-              </div>
-              <div class="approval-meta">
-                ${esc(r.submitted_by)} · ${esc(String(r.created_at).slice(0,16).replace("T"," "))} UTC
-              </div>
-            </div>
-            <div class="approval-body">
-              <div><small>Holder</small>${esc(r.to_holder || "—")}</div>
-              <div><small>Activity</small>${esc(r.activity || "—")}</div>
-              <div><small>Reason</small>${esc(r.reason || "—")}</div>
-            </div>
-            <div class="approval-items">
-              ${(r.asset_ids && r.asset_ids.length)
-                ? `<div><small>Serialized (${r.asset_ids.length})</small>${pills(r.asset_ids, id => `<span class="pill">${esc(id)}</span>`)}</div>`
-                : ""}
-              ${(r.bulk_items && r.bulk_items.length)
-                ? `<div><small>Non-serialized</small>${pills(r.bulk_items, b => `<span class="pill">${esc(b.item_type)} ×${b.quantity}</span>`)}</div>`
-                : ""}
-            </div>
-            
-            ${hasAttachment ? `
-              <div class="approval-attachment">
-                <div class="att-info">
-                  <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                    <path d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path>
-                  </svg>
-                  <span title="${esc(attName)}">${esc(attName)}</span>
-                </div>
-                <button class="ghost" data-att-path="${esc(attPath)}" data-att-name="${esc(attName)}">Download</button>
-              </div>
-            ` : ""}
-
-            ${canDecide
-              ? `<div class="approval-actions">
-                   ${needsOperator ? `<span class="approval-meta" style="flex-basis:100%">Waiting for an operator of ${esc(r.approver_location)} to approve this.</span>` : ""}
-                   <input id="note-${r.id}" placeholder="Optional note">
-                   ${needsOperator ? "" : `<button data-act="approve" data-id="${r.id}">Approve</button>`}
-                   <button class="ghost" data-act="reject" data-id="${r.id}">Reject</button>
-                 </div>`
-              : `<div class="approval-decision">
-                   ${r.decided_by
-                     ? `Decided by ${esc(r.decided_by)} on ${esc(String(r.decided_at||"").slice(0,16).replace("T"," "))}`
-                     : ""}
-                   ${r.decision_note ? ` — ${esc(r.decision_note)}` : ""}
-                 </div>`}
-          </div>`;
-        }).join("");
-
-        // Handle Approve / Reject Actions
-        list.querySelectorAll("button[data-act]").forEach(b => {
-          b.onclick = () => decide(b.dataset.id, b.dataset.act);
-        });
-
-        // Handle Download Attachment Actions
-        list.querySelectorAll("button[data-att-path]").forEach(b => {
-          b.onclick = async (e) => {
-            const btn = e.currentTarget;
-            const path = btn.dataset.attPath;
-            const name = btn.dataset.attName;
-            
-            const originalText = btn.textContent;
-            btn.disabled = true;
-            btn.textContent = "Downloading...";
-            
-            try {
-              // Bucket is private: download the file as a blob using the user's session,
-              // then save it under its original name (works cross-origin, unlike a bare <a download>).
-              const { data: blob, error } = await sb.storage.from('contractor-attachments').download(path);
-              if (error) throw error;
-
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href = url;
-              a.download = name;
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
-              setTimeout(() => URL.revokeObjectURL(url), 10000);
-            } catch (err) {
-              alert("Could not download file: " + err.message);
-            } finally {
-              btn.textContent = originalText;
-              btn.disabled = false;
-            }
-          };
-        });
+        const badge = s => `<span class="b ${s === "APPROVED" ? "ok" : s === "REJECTED" ? "no" : "warn"}">${esc(s)}</span>`;
+        tbl.innerHTML = head + "<tbody>" + rows.map(f => {
+          const r = f.r, d = decidable(r);
+          const what = f.bulk
+            ? f.bulk.map(b => `<span class="pill">${esc(b.item_type)} ×${esc(b.quantity)}</span>`).join("") + '<span class="meta">Non-serialized</span>'
+            : `<span class="tid">${esc(f.asset)}</span>`;
+          const p = r.attachment_path || r.attachment_url || r.file_path;
+          const n = r.attachment_name || r.file_name || (p && p.split("/").pop()) || "Signed Document";
+          const file = p ? `<button class="ghost dl" data-att-path="${esc(p)}" data-att-name="${esc(n)}" title="${esc(n)}" type="button">📎 Download</button>`
+                         : '<span class="meta">—</span>';
+          let last;
+          if (d) last = `<div class="acts"><button data-act="approve" data-key="${esc(f.key)}" type="button">Approve</button>
+                         <button class="ghost" data-act="reject" data-key="${esc(f.key)}" type="button">Reject</button></div>`;
+          else if (tab === "approve" && r.status === "PENDING") last = `<span class="wait">Waiting for an operator of ${esc(r.approver_location)}</span>`;
+          else last = `<span class="meta">${r.decided_by ? "By " + esc(r.decided_by) + " · " + esc(when(r.decided_at)) + " UTC" : ""}${r.decision_note ? "<br>" + esc(r.decision_note) : ""}</span>`;
+          return `<tr data-key="${esc(f.key)}" data-tid="${esc(r.id)}" class="${f.first ? "grp " : ""}${picked.has(f.key) ? "picked" : ""}">
+            ${canPick ? `<td class="chk"><input type="checkbox" class="pick" data-key="${esc(f.key)}" ${d ? "" : "disabled"} ${picked.has(f.key) ? "checked" : ""}></td>` : ""}
+            <td>${what}</td>
+            <td><b>${esc(label(r))}</b> → ${esc(r.to_location || "—")}${r.from_location ? `<span class="meta">from ${esc(r.from_location)}</span>` : ""}</td>
+            <td>${esc(r.submitted_by)}<span class="meta">${esc(when(r.created_at))} UTC</span></td>
+            <td>${esc(r.reason || "—")}</td>
+            <td>${file}</td>
+            <td>${badge(r.status)}</td>
+            <td>${last}</td>
+          </tr>`;
+        }).join("") + "</tbody>";
+        sync();
       }
 
-      async function decide(id, act){
-        const note = ($("#note-"+id)?.value || "").trim() || null;
-        const rpc = act === "approve" ? "approve_pending_transfer" : "reject_pending_transfer";
-        const btn = list.querySelector(`button[data-act="${act}"][data-id="${id}"]`);
-        
-        if (btn) btn.disabled = true;
-        const { error } = await sb.rpc(rpc, { p_id: id, p_note: note });
-        
-        if (error){
-          say(msg, "Failed: " + error.message);
-          if (btn) btn.disabled = false;
-          return;
+      // Keep select-all, helper links and the action bar in step with the ticks (no re-render).
+      function sync(){
+        const rows = visible().filter(f => decidable(f.r));
+        const sa = $("#selall");
+        if (sa){
+          sa.checked = rows.length > 0 && rows.every(f => picked.has(f.key));
+          sa.indeterminate = !sa.checked && rows.some(f => picked.has(f.key));
+          sa.disabled = !rows.length;
         }
-        
-        say(msg, act === "approve" ? "Approved and recorded." : "Rejected.", true);
+        const nPend = flat.filter(f => decidable(f.r)).length;
+        $("#quick").innerHTML = nPend && tab === "approve"
+          ? `${nPend} waiting <a id="q-all">Select all</a><a id="q-none">Clear</a>` : "";
+        const on = picked.size > 0 && tab === "approve";
+        $("#bulkbar").classList.toggle("on", on);
+        document.body.classList.toggle("has-bulk", on);
+        $("#bb-n").textContent = picked.size;
+        $("#bb-approve").disabled = $("#bb-reject").disabled = busy;
+      }
+
+      const paint = () => tbl.querySelectorAll("tbody tr[data-key]").forEach(tr => tr.classList.toggle("picked", picked.has(tr.dataset.key)));
+
+      tbl.addEventListener("click", async e => {
+        const t = e.target;
+
+        if (t.id === "selall"){
+          visible().filter(f => decidable(f.r)).forEach(f => t.checked ? picked.add(f.key) : picked.delete(f.key));
+          tbl.querySelectorAll("input.pick:not(:disabled)").forEach(c => c.checked = t.checked);
+          paint(); sync(); return;
+        }
+
+        if (t.classList.contains("pick")){
+          // Shift-click ticks (or clears) every tablet between this one and the last one clicked.
+          const boxes = [...tbl.querySelectorAll("input.pick:not(:disabled)")];
+          const i = boxes.indexOf(t);
+          if (e.shiftKey && lastIdx >= 0 && lastIdx < boxes.length){
+            const [a, b] = [Math.min(i, lastIdx), Math.max(i, lastIdx)];
+            for (let k = a; k <= b; k++){ boxes[k].checked = t.checked; t.checked ? picked.add(boxes[k].dataset.key) : picked.delete(boxes[k].dataset.key); }
+          } else {
+            t.checked ? picked.add(t.dataset.key) : picked.delete(t.dataset.key);
+          }
+          lastIdx = i; paint(); sync(); return;
+        }
+
+        const a = t.closest("button[data-act]");
+        if (a){ decide([a.dataset.key], a.dataset.act); return; }
+
+        const d = t.closest("button[data-att-path]");
+        if (!d) return;
+        const old = d.textContent;
+        d.disabled = true; d.textContent = "…";
+        try {
+          // Private bucket: download as a blob with the user's session, then save under the original name.
+          const { data: blob, error } = await sb.storage.from("contractor-attachments").download(d.dataset.attPath);
+          if (error) throw error;
+          const url = URL.createObjectURL(blob);
+          const l = document.createElement("a");
+          l.href = url; l.download = d.dataset.attName;
+          document.body.appendChild(l); l.click(); document.body.removeChild(l);
+          setTimeout(() => URL.revokeObjectURL(url), 10000);
+        } catch (err){
+          alert("Could not download file: " + (err.message || err));
+        } finally {
+          d.textContent = old; d.disabled = false;
+        }
+      });
+
+      document.addEventListener("click", e => {
+        if (e.target.id === "q-all"){ visible().filter(f => decidable(f.r)).forEach(f => picked.add(f.key)); render(); }
+        if (e.target.id === "q-none"){ picked.clear(); render(); }
+      });
+
+      // Decide a set of ticked rows. One database call per transfer, covering all its ticked tablets.
+      async function decide(keys, act){
+        if (busy || !keys.length) return;
+        const byT = new Map();
+        for (const k of keys){
+          const f = flat.find(x => x.key === k); if (!f) continue;
+          const g = byT.get(f.r.id) || { r: f.r, assets: [], bulk: false };
+          f.bulk ? (g.bulk = true) : g.assets.push(f.asset);
+          byT.set(f.r.id, g);
+        }
+        const nT = [...byT.values()].reduce((s, g) => s + g.assets.length, 0);
+        const nB = [...byT.values()].filter(g => g.bulk).length;
+        const verb = act === "approve" ? "Approve" : "Reject";
+        if (keys.length > 1 && !confirm(`${verb} ${nT} tablet${nT === 1 ? "" : "s"}${nB ? (nT ? " and " : " ") + nB + " non-serialized item group" + (nB === 1 ? "" : "s") : ""}?`)) return;
+
+        const note = $("#bb-note").value.trim() || null;
+        busy = true; sync();
+        say(msg, (act === "approve" ? "Approving" : "Rejecting") + "…", true);
+
+        let done = 0; const fails = [];
+        for (const g of byT.values()){              // one transfer at a time: each approval locks and writes the log
+          const { error } = await sb.rpc("decide_pending_items", {
+            p_id: g.r.id,
+            p_approve: act === "approve" ? g.assets : [],
+            p_reject:  act === "reject"  ? g.assets : [],
+            p_note: note,
+            p_bulk: g.bulk ? act : null
+          });
+          const label_ = `${label(g.r)} → ${g.r.to_location || "—"}`;
+          if (error) fails.push(`${label_}: ${error.message}`);
+          else done += g.assets.length + (g.bulk ? 1 : 0);
+        }
+        busy = false;
+        if (!fails.length) $("#bb-note").value = "";
+
+        const past = act === "approve" ? "approved" : "rejected";
+        msg.hidden = false;
+        msg.className = "msg " + (fails.length ? "bad" : "ok");
+        msg.innerHTML = `<div class="resline"><b>${done}</b> row${done === 1 ? "" : "s"} ${past}${fails.length ? `, <b>${fails.length}</b> transfer${fails.length === 1 ? "" : "s"} failed:` : "."}</div>` +
+          fails.map(f => `<div class="resline">• ${esc(f)}</div>`).join("");
         await load();
         if (window.RTVBell) window.RTVBell.updateBadge();
       }
 
-      // Handle Tab Switching
+      $("#bb-approve").onclick = () => decide([...picked], "approve");
+      $("#bb-reject").onclick  = () => decide([...picked], "reject");
+      $("#bb-clear").onclick   = () => { picked.clear(); render(); };
+      $("#q").oninput = render;
+
       document.querySelectorAll(".tab").forEach(t => {
         t.onclick = () => {
           document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
           t.classList.add("active");
           tab = t.dataset.tab;
+          picked.clear(); lastIdx = -1;
           load();
         };
       });
-      
-      $("#f_status").onchange = load;
+      $("#f_status").onchange = () => { picked.clear(); lastIdx = -1; load(); };
       $("#refresh").onclick = load;
 
-      // Deep-link from notification bell: approvals.html?id=...
+      // Deep-link from the notification bell: approvals.html?id=<transfer id>
       const wanted = new URLSearchParams(location.search).get("id");
       await load();
-      
       if (wanted){
-        const el = [...list.querySelectorAll(".approval")].find(el =>
-          el.innerHTML.includes(`note-${wanted}`) || el.querySelector(`button[data-id="${wanted}"]`)
-        );
-        if (el) {
-          el.scrollIntoView({ behavior:"smooth", block:"center" });
-          el.style.boxShadow = "0 0 0 3px #2E5299";
-          setTimeout(() => el.style.boxShadow = "", 2000);
+        const tr = tbl.querySelector(`tbody tr[data-tid="${CSS.escape(wanted)}"]`);
+        if (tr){
+          tr.scrollIntoView({ behavior:"smooth", block:"center" });
+          tr.classList.add("flash");
+          setTimeout(() => tr.classList.remove("flash"), 2000);
         }
       }
     })();
