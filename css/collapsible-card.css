@@ -1,0 +1,9 @@
+/* Collapsible cards (same look as the transfer page) */
+.sup-card{padding:0;overflow:hidden}
+.sup-card>summary{cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 24px}
+.sup-card>summary::-webkit-details-marker{display:none}
+.sup-card>summary h2{margin:0}
+.sup-card>summary::after{content:"";flex:none;width:9px;height:9px;border-right:2px solid var(--text-2);border-bottom:2px solid var(--text-2);transform:rotate(45deg);transition:transform .15s;margin-right:4px}
+.sup-card[open]>summary::after{transform:rotate(-135deg) translate(-2px,-2px)}
+.sup-card[open]>summary{border-bottom:1px solid var(--border)}
+.sup-body{padding:18px 24px 22px}
