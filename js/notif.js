@@ -7,6 +7,7 @@
   };
   const head = table => sb.from(table).select("id", { count: "exact", head: true });
 
+
   async function waiting() {
     const { data: { session } } = await sb.auth.getSession();
     if (!session) return null;
@@ -15,18 +16,8 @@
     const { data: role, error: roleErr } = await sb.rpc("app_role");
     if (roleErr || !role || role === "viewer") return null;
 
-    if (role === "field_supervisor") {
-      // Transfers operators sent to this supervisor (row-level security already limits what he can see).
-      const t = await countOf(head("pending_transfers").eq("status", "PENDING").neq("submitted_by", email));
-      const b = await countOf(head("enumerator_batches").eq("status", "PENDING"));
-      const parts = [t && t + " transfer(s)", b && b + " batch(es)"].filter(Boolean);
-      return { n: t + b, href: t ? "approvals.html" : null,
-               label: parts.join(" and ") + " awaiting approval" };
-    }
-
+   
     let tq = head("pending_transfers").eq("status", "PENDING").neq("submitted_by", email);
-    // Items an admin added (e.g. new stock) must be approved by an operator of that location,
-    // so an admin cannot act on them - leave them out of the admin's count.
     if (role === "admin") tq = tq.eq("requires_operator_approval", false);
     const transfers = countOf(tq);
 
@@ -34,12 +25,25 @@
       const requests = countOf(head("item_requests").eq("status", "PENDING").neq("requested_by", email));
       const [t, r] = await Promise.all([transfers, requests]);
       const parts = [t && t + " transfer(s)", r && r + " item request(s)"].filter(Boolean);
-      return { n: t + r, href: t ? "approvals.html" : "requests.html",
+      return { n: t + r, approvals: t, href: t ? "approvals.html" : "requests.html",
                label: parts.join(" and ") + " awaiting your approval" };
     }
 
-    const t = await transfers;                       // operator
-    return { n: t, href: "approvals.html", label: t + " transfer(s) awaiting your approval" };
+
+    const t = await transfers;
+    return { n: t, approvals: t, href: "approvals.html", label: t + " transfer(s) awaiting your approval" };
+  }
+
+  function markApprovalsLink(n) {
+    const a = document.querySelector('#nav nav a[href="approvals.html"]');
+    if (!a) return;
+    if (n > 0) {
+      a.textContent = "Approvals (" + n + ")";
+      a.style.setProperty("font-weight", "700", "important");
+    } else {
+      a.textContent = "Approvals";
+      a.style.removeProperty("font-weight");
+    }
   }
 
   async function updateBadge() {
@@ -48,6 +52,9 @@
       if (!nav) return;
       const old = document.getElementById(BELL_ID);
       const r = await waiting();
+
+      markApprovalsLink(r ? r.approvals || 0 : 0);
+
       if (!r || !r.n) { if (old) old.remove(); return; }
 
       const el = document.createElement(r.href ? "a" : "span");
@@ -70,7 +77,6 @@
 
   window.RTVBell = { updateBadge };
 
-  // guard() draws the header asynchronously - wait for it, then show the badge.
   let tries = 0;
   const boot = () => {
     if (document.querySelector("#nav .who")) updateBadge();
